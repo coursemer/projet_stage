@@ -68,22 +68,36 @@ class ConnectivityTest:
             self.results.append(False)
 
     def test_spark(self):
-        """Vérifier Spark"""
+        """Vérifier Spark via PySpark plutôt que spark-submit"""
         print("\n=== Test Spark ===")
+        # tenter import pyspark et création d'une session
         try:
-            result = subprocess.run(['spark-submit', '--version'], capture_output=True, text=True, timeout=10)
+            import pyspark
+            from pyspark.sql import SparkSession
+            spark = SparkSession.builder.master("local[*]").appName("conn_test").getOrCreate()
+            version = spark.version
+            spark.stop()
+            print(f"✓ Spark (PySpark) disponible, version {version}")
+            self.results.append(True)
+            return
+        except Exception as e:
+            print(f"⚠️ PySpark local non disponible : {e}")
+        # fallback : démarrer conteneur spark-master et tester à l'intérieur
+        try:
+            docker_cmd = [
+                'docker-compose', 'run', '--rm', 'spark-master',
+                'python', '-c',
+                'from pyspark.sql import SparkSession; print(SparkSession.builder.appName("x").master("local[*]").getOrCreate().version)'
+            ]
+            result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=60)
             if result.returncode == 0:
-                lines = result.stdout.split('\n')
-                print(f"✓ Spark: Installé")
-                for line in lines[:2]:
-                    if line.strip():
-                        print(f"  {line.strip()}")
+                print(f"✓ Spark (docker) version {result.stdout.strip()}")
                 self.results.append(True)
             else:
-                print(f"✗ Spark: {result.stderr}")
+                print(f"✗ Spark docker: {result.stderr}")
                 self.results.append(False)
         except Exception as e:
-            print(f"✗ Spark: {e}")
+            print(f"✗ Spark docker: {e}")
             self.results.append(False)
 
     def test_port_availability(self, host='localhost', port=8080, service=''):
