@@ -121,9 +121,9 @@ class ConnectivityTest:
     def test_ports(self):
         """Vérifier les ports principaux"""
         print("\n=== Test Portabilité (services) ===")
-        self.test_port_availability(8080, "(Airflow)")
-        self.test_port_availability(8081, "(Spark Master)")
-        self.test_port_availability(7077, "(Spark RPC)")
+        self.test_port_availability(port=8080, service="(Airflow)")
+        self.test_port_availability(port=8081, service="(Spark Master)")
+        self.test_port_availability(port=7077, service="(Spark RPC)")
 
     def run_all(self):
         """Exécuter tous les tests"""
