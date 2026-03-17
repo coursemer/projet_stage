@@ -3,6 +3,7 @@
 Script de test de connectivité pour Docker, Airflow et Spark
 """
 
+import os
 import subprocess
 import socket
 import time
@@ -70,6 +71,9 @@ class ConnectivityTest:
     def test_spark(self):
         """Vérifier Spark via PySpark plutôt que spark-submit"""
         print("\n=== Test Spark ===")
+        # Assurer qu'on ne force pas un SPARK_HOME invalide (peut pointer vers ./spark qui n'a pas de bin/spark-submit)
+        os.environ.pop("SPARK_HOME", None)
+
         # tenter import pyspark et création d'une session
         try:
             import pyspark
@@ -82,14 +86,15 @@ class ConnectivityTest:
             return
         except Exception as e:
             print(f"⚠️ PySpark local non disponible : {e}")
+
         # fallback : démarrer conteneur spark-master et tester à l'intérieur
         try:
             docker_cmd = [
                 'docker-compose', 'run', '--rm', 'spark-master',
-                'python', '-c',
-                'from pyspark.sql import SparkSession; print(SparkSession.builder.appName("x").master("local[*]").getOrCreate().version)'
+                'bash', '-c',
+                'pip install pyspark && python -c "from pyspark.sql import SparkSession; print(SparkSession.builder.appName(\"x\").master(\"local[*]\").getOrCreate().version)"'
             ]
-            result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=120)
             if result.returncode == 0:
                 print(f"✓ Spark (docker) version {result.stdout.strip()}")
                 self.results.append(True)

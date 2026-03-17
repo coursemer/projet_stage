@@ -1,0 +1,26 @@
+analysis-paths:
+- analysis
+clean-targets:
+- target
+- dbt_packages
+config-version: 2
+data-paths:
+- data
+macro-paths:
+- macros
+model-paths:
+- models
+models:
+  projet_stage_dbt:
+    marts:
+      materialized: table
+    staging:
+      materialized: view
+name: projet_stage_dbt
+profile: default
+snapshot-paths:
+- snapshots
+target-path: target
+test-paths:
+- tests
+version: 1.0.0

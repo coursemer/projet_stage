@@ -1,0 +1,51 @@
+# Environment
+airflow_env/
+venv/
+env/
+.venv/
+
+# Airflow
+logs/
+dags/__pycache__/
+*.pyc
+*.pyo
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+
+# Spark
+.spark_env
+spark_warehouse/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.log
+*.pid
+
+# Data files (keep only scripts)
+spark/data/
+spark/apps/
+spark/profiles/
+
+# Python
+dist/
+build/
+*.egg-info/

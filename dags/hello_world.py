@@ -13,7 +13,7 @@ dag = DAG(
     'hello_world',
     default_args=default_args,
     description='DAG de test Airflow',
-    schedule_interval=None,
+    schedule=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
 )

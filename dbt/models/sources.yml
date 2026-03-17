@@ -1,0 +1,19 @@
+models:
+- description: Staging model for events with data cleaning
+  name: stg_events
+sources:
+- description: Raw data sources
+  name: raw
+  tables:
+  - columns:
+    - description: Event ID
+      name: id
+    - description: Event timestamp
+      name: timestamp
+    - description: User ID
+      name: user_id
+    - description: Type of event
+      name: event_type
+    description: Raw events from application
+    name: events
+version: 2
