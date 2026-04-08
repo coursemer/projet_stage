@@ -12,10 +12,12 @@ model-paths:
 - models
 models:
   projet_stage_dbt:
-    marts:
-      materialized: table
     staging:
       materialized: view
+    intermediate:
+      materialized: view
+    marts:
+      materialized: table
 name: projet_stage_dbt
 profile: default
 snapshot-paths:

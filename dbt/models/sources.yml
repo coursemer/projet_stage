@@ -1,19 +1,76 @@
-models:
-- description: Staging model for events with data cleaning
-  name: stg_events
-sources:
-- description: Raw data sources
-  name: raw
-  tables:
-  - columns:
-    - description: Event ID
-      name: id
-    - description: Event timestamp
-      name: timestamp
-    - description: User ID
-      name: user_id
-    - description: Type of event
-      name: event_type
-    description: Raw events from application
-    name: events
 version: 2
+
+sources:
+  - name: raw
+    description: Raw data sources ingested by Spark jobs
+    tables:
+      - name: events
+        description: Raw events from application
+        columns:
+          - name: id
+            description: Event ID
+          - name: timestamp
+            description: Event timestamp
+          - name: user_id
+            description: User ID
+          - name: event_type
+            description: Type of event
+
+      - name: sales
+        description: Raw daily sales transactions from CSV ingestion
+        columns:
+          - name: order_id
+            description: Unique order identifier
+          - name: customer_id
+            description: Customer identifier
+          - name: product_id
+            description: Product identifier
+          - name: sale_date
+            description: Date of the sale (YYYY-MM-DD)
+          - name: quantity
+            description: Number of units sold
+          - name: unit_price
+            description: Price per unit (EUR)
+          - name: channel
+            description: Sales channel (ONLINE, STORE, MOBILE)
+          - name: region
+            description: Geographic region (NORTH, SOUTH, EAST, WEST)
+          - name: currency
+            description: Transaction currency (3-letter ISO code)
+
+models:
+  - name: stg_events
+    description: Staging model for events with data cleaning
+
+  - name: stg_sales
+    description: Staging model for sales — cleaned and standardised
+    columns:
+      - name: order_id
+        description: Unique order ID (not null)
+        tests:
+          - not_null
+          - unique
+      - name: sale_date
+        description: Sale date
+        tests:
+          - not_null
+      - name: revenue
+        description: quantity * unit_price, must be positive
+        tests:
+          - not_null
+
+  - name: int_sales_daily
+    description: Daily aggregation of sales by region and channel
+    columns:
+      - name: sale_date
+        tests: [not_null]
+      - name: total_revenue
+        tests: [not_null]
+
+  - name: sales_summary
+    description: Final sales mart with running totals and KPIs
+    columns:
+      - name: sale_date
+        tests: [not_null]
+      - name: cumulative_revenue_by_region
+        tests: [not_null]
