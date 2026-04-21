@@ -34,7 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import numpy as np
@@ -209,7 +209,7 @@ class AnomalyInjector:
             "injection_rate":    self.injection_rate,
             "total_rows_input":  len(df),
             "total_rows_output": len(dirty),
-            "generated_at":      datetime.utcnow().isoformat() + "Z",
+            "generated_at":      datetime.now(timezone.utc).isoformat(),
             "anomalies_injected": log,
             "total_anomalous_rows": len({idx for e in log for idx in e["row_indices"]}),
             "tag_rows":           tag_rows,
@@ -300,7 +300,7 @@ class AnomalyInjector:
     def _inject_future_date(self, df, cols, indices):
         cols = self._pick_cols(df, cols)
         entries = []
-        today = datetime.utcnow().date()
+        today = datetime.now(timezone.utc).date()
         for col in cols:
             df = df.copy()
             for i in indices:
