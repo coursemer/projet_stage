@@ -3,3 +3,4 @@ pandas>=2.3.3
 pandera>=0.26.1
 pyarrow>=21.0.0
 pyspark>=4.0.2
+kaggle>=1.7.4

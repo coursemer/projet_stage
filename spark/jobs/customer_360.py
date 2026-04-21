@@ -20,7 +20,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 def parse_args():
     parser = argparse.ArgumentParser(description="Customer 360 Spark job")
     parser.add_argument("--date", required=True, help="Execution date YYYY-MM-DD")
-    parser.add_argument("--sales", default=os.path.join(BASE_DIR, "spark", "data", "marts", "sales"), help="Sales mart path")
+    parser.add_argument("--sales", default=os.path.join(BASE_DIR, "spark", "data", "staging", "sales_clean"), help="Clean sales staging path")
     parser.add_argument("--crm", default=os.path.join(BASE_DIR, "spark", "data", "raw", "crm"), help="CRM data path")
     parser.add_argument("--customers", default=os.path.join(BASE_DIR, "spark", "data", "raw", "customers"), help="Customers data path")
     parser.add_argument("--dest", default=os.path.join(BASE_DIR, "spark", "data", "marts", "customer_360"), help="Output path")
