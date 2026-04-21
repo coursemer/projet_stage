@@ -11,6 +11,9 @@ dags/__pycache__/
 *.pyo
 __pycache__/
 
+# Claude Code
+.claude/
+
 # IDE
 .vscode/
 .idea/
