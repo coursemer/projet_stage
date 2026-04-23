@@ -1,6 +1,43 @@
 version: '3.8'
 
 services:
+  influxdb:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
+      DOCKER_INFLUXDB_INIT_ORG: data-trust
+      DOCKER_INFLUXDB_INIT_BUCKET: metrics
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: data-trust-token-2026
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  metrics-api:
+    image: python:3.11-slim
+    working_dir: /app
+    ports:
+      - "8090:8090"
+    volumes:
+      - .:/app
+    depends_on:
+      - influxdb
+    environment:
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: data-trust-token-2026
+      INFLUX_ORG: data-trust
+      INFLUX_BUCKET: metrics
+    command: >
+      bash -c "pip install fastapi uvicorn influxdb-client pydantic --quiet &&
+               python spark/metrics/api.py --host 0.0.0.0 --port 8090"
+
   airflow:
     image: apache/airflow:latest
     environment:
@@ -40,3 +77,6 @@ services:
     depends_on:
       - spark-master
     command: bash -c "pip install pyspark && sleep 1000"
+
+volumes:
+  influxdb_data:
