@@ -39,7 +39,18 @@ try:
 except ImportError:
     _FASTAPI_OK = False
 
-from .storage import MetricPoint, SQLiteMetricsStore, DEFAULT_DB
+import sys
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+try:
+    from .storage          import MetricPoint, SQLiteMetricsStore, DEFAULT_DB
+    from .anomaly_detector import AnomalyDetector
+    from .alert_manager    import AlertManager
+except ImportError:
+    from spark.metrics.storage          import MetricPoint, SQLiteMetricsStore, DEFAULT_DB
+    from spark.metrics.anomaly_detector import AnomalyDetector
+    from spark.metrics.alert_manager    import AlertManager
 
 
 # ── Pydantic schema — défini au niveau module pour que Pydantic v2 puisse le résoudre ──
@@ -76,7 +87,8 @@ def create_app(db_path: str = DEFAULT_DB) -> "FastAPI":  # type: ignore[return]
         allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
     )
 
-    store = SQLiteMetricsStore(db_path=db_path)
+    store   = SQLiteMetricsStore(db_path=db_path)
+    alert_mgr = AlertManager(db_path=db_path)
 
     # ── Routes ────────────────────────────────────────────────────────────────
 
@@ -138,6 +150,62 @@ def create_app(db_path: str = DEFAULT_DB) -> "FastAPI":  # type: ignore[return]
         n = store.write(metric_points)
         return {"inserted": n, "ts": datetime.now(timezone.utc).isoformat()}
 
+    # ── Alertes ───────────────────────────────────────────────────────────────
+
+    @app.get("/api/v1/alerts")
+    def get_alerts(
+        source:       Optional[str]  = Query(None),
+        severity:     Optional[str]  = Query(None, description="critical | warning | info"),
+        metric_name:  Optional[str]  = Query(None),
+        algorithm:    Optional[str]  = Query(None),
+        acknowledged: Optional[bool] = Query(None),
+        from_ts:      Optional[str]  = Query(None),
+        to_ts:        Optional[str]  = Query(None),
+        limit:        int            = Query(200),
+    ):
+        rows = alert_mgr.query(
+            source=source, severity=severity, metric_name=metric_name,
+            algorithm=algorithm, acknowledged=acknowledged,
+            from_ts=from_ts, to_ts=to_ts, limit=limit,
+        )
+        return {"count": len(rows), "alerts": rows}
+
+    @app.get("/api/v1/alerts/summary")
+    def get_alerts_summary():
+        return alert_mgr.summary()
+
+    @app.post("/api/v1/alerts/detect", status_code=201)
+    def detect_anomalies():
+        """Lance la détection d'anomalies sur les métriques stockées et sauvegarde les alertes."""
+        detector = AnomalyDetector(store)
+        alerts   = detector.run()
+        n_saved  = alert_mgr.save(alerts)
+        by_sev: dict = {}
+        for a in alerts:
+            by_sev[a.severity] = by_sev.get(a.severity, 0) + 1
+        return {
+            "detected": len(alerts),
+            "saved":    n_saved,
+            "by_severity": by_sev,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @app.patch("/api/v1/alerts/{alert_id}/acknowledge")
+    def acknowledge_alert(alert_id: int):
+        ok = alert_mgr.acknowledge(alert_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail=f"Alerte {alert_id} introuvable")
+        return {"acknowledged": True, "alert_id": alert_id}
+
+    @app.post("/api/v1/alerts/acknowledge-all")
+    def acknowledge_all_alerts(
+        source:      Optional[str] = Query(None),
+        severity:    Optional[str] = Query(None),
+        metric_name: Optional[str] = Query(None),
+    ):
+        n = alert_mgr.acknowledge_all(source=source, severity=severity, metric_name=metric_name)
+        return {"acknowledged": n}
+
     return app
 
 
@@ -155,18 +223,46 @@ def main():
         print("Erreur : FastAPI non installé. Exécutez : pip install fastapi")
         return
 
-    try:
-        import uvicorn
-    except ImportError:
-        print("Erreur : uvicorn non installé. Exécutez : pip install uvicorn")
-        return
-
     print(f"[metrics/api] Démarrage sur http://{args.host}:{args.port}")
     print(f"[metrics/api] Base SQLite    : {args.db}")
     print(f"[metrics/api] Documentation  : http://localhost:{args.port}/docs")
 
     app = create_app(db_path=args.db)
-    uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)
+    _serve_app(app, host=args.host, port=args.port)
+
+
+def _serve_app(app, host: str, port: int) -> None:
+    """Lance l'app ASGI — essaie hypercorn, puis uvicorn (avec patch si besoin)."""
+    # ── Hypercorn (premier choix : pas de conflits httptools/websockets) ──────
+    try:
+        import asyncio
+        from hypercorn.config import Config as HConfig
+        from hypercorn.asyncio import serve as hserve
+
+        cfg = HConfig()
+        cfg.bind = [f"{host}:{port}"]
+        asyncio.run(hserve(app, cfg))
+        return
+    except ImportError:
+        pass
+
+    # ── Uvicorn (avec patch a2wsgi + websockets si nécessaire) ───────────────
+    try:
+        try:
+            import a2wsgi as _a2
+            if not hasattr(_a2, "WSGIMiddleware"):
+                from a2wsgi.wsgi import WSGIMiddleware as _mw
+                _a2.WSGIMiddleware = _mw
+        except Exception:
+            pass
+        import uvicorn
+        uvicorn.run(app, host=host, port=port)
+        return
+    except Exception as exc:
+        print(f"Erreur uvicorn : {exc}")
+
+    print("Erreur : aucun serveur ASGI disponible.")
+    print("Installez hypercorn :  pip install hypercorn")
 
 
 if __name__ == "__main__":
