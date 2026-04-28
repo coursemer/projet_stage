@@ -34,9 +34,16 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from .storage import MetricPoint
-
 BASE_DIR     = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import sys as _sys
+if BASE_DIR not in _sys.path:
+    _sys.path.insert(0, BASE_DIR)
+
+try:
+    from .storage import MetricPoint
+except ImportError:
+    from spark.metrics.storage import MetricPoint
 METRICS_DIR  = os.path.join(BASE_DIR, "spark", "data", "metrics")
 DBT_RESULTS  = os.path.join(BASE_DIR, "dbt", "target", "run_results.json")
 

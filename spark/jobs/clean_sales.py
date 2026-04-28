@@ -9,6 +9,7 @@ Usage:
 
 import argparse
 import os
+import sys
 import pandas as pd
 import pandera as pa
 from pandera import Column, DataFrameSchema, Check
@@ -16,6 +17,13 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+try:
+    from spark.metrics.collector import SparkMetricsEmitter
+except ImportError:
+    SparkMetricsEmitter = None  # type: ignore[assignment,misc]
 
 # ── Pandera schema ────────────────────────────────────────────────────────────
 SALES_PANDERA_SCHEMA = DataFrameSchema(
@@ -111,13 +119,18 @@ def clean(spark: SparkSession, source: str, dest: str, run_date: str) -> int:
     )
 
     print(f"[clean_sales] Written {total_clean:,} clean rows → {dest}")
-    return total_clean
+    return total_staged, total_clean, rejected
 
 
 if __name__ == "__main__":
     args = parse_args()
     spark = build_spark()
     try:
-        clean(spark, args.source, args.dest, args.date)
+        if SparkMetricsEmitter is not None:
+            with SparkMetricsEmitter("clean_sales", run_date=args.date) as em:
+                rows_in, rows_out, rows_rej = clean(spark, args.source, args.dest, args.date)
+                em.record(rows_input=rows_in, rows_output=rows_out, rows_rejected=rows_rej)
+        else:
+            clean(spark, args.source, args.dest, args.date)
     finally:
         spark.stop()

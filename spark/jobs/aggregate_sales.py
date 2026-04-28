@@ -17,10 +17,18 @@ Usage:
 
 import argparse
 import os
+import sys
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+try:
+    from spark.metrics.collector import SparkMetricsEmitter
+except ImportError:
+    SparkMetricsEmitter = None  # type: ignore[assignment,misc]
 
 
 def parse_args():
@@ -100,6 +108,11 @@ if __name__ == "__main__":
     args = parse_args()
     spark = build_spark()
     try:
-        aggregate(spark, args.source, args.dest, args.date)
+        if SparkMetricsEmitter is not None:
+            with SparkMetricsEmitter("aggregate_sales", run_date=args.date) as em:
+                rows_out = aggregate(spark, args.source, args.dest, args.date)
+                em.record(rows_output=rows_out)
+        else:
+            aggregate(spark, args.source, args.dest, args.date)
     finally:
         spark.stop()

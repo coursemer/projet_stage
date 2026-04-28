@@ -9,12 +9,23 @@ Usage:
 
 import argparse
 import os
+import sys
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     StructType, StructField,
     StringType, DoubleType, IntegerType, DateType,
 )
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+try:
+    from spark.metrics.collector import SparkMetricsEmitter
+except ImportError:
+    SparkMetricsEmitter = None  # type: ignore[assignment,misc]
 
 # ── Schema enforcement ────────────────────────────────────────────────────────
 SALES_SCHEMA = StructType([
@@ -28,9 +39,6 @@ SALES_SCHEMA = StructType([
     StructField("region",       StringType(),  nullable=True),
     StructField("currency",     StringType(),  nullable=True),
 ])
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Sales ingestion Spark job")
@@ -100,13 +108,18 @@ def ingest(spark: SparkSession, source: str, dest: str, run_date: str) -> int:
     )
 
     print(f"[ingest_sales] Written {total_clean:,} rows → {dest}")
-    return total_clean
+    return total_raw, total_clean, rejected
 
 
 if __name__ == "__main__":
     args = parse_args()
     spark = build_spark()
     try:
-        ingest(spark, args.source, args.dest, args.date)
+        if SparkMetricsEmitter is not None:
+            with SparkMetricsEmitter("ingest_sales", run_date=args.date) as em:
+                rows_in, rows_out, rows_rej = ingest(spark, args.source, args.dest, args.date)
+                em.record(rows_input=rows_in, rows_output=rows_out, rows_rejected=rows_rej)
+        else:
+            ingest(spark, args.source, args.dest, args.date)
     finally:
         spark.stop()
