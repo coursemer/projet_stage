@@ -5,7 +5,7 @@
 ) }}
 
 SELECT
-    {{ dbt_utils.surrogate_key(['id']) }} as surrogate_key,
+    {{ dbt_utils.generate_surrogate_key(['id']) }} as surrogate_key,
     *
 FROM {{ source('raw', 'events') }}
 WHERE _etl_loaded_at IS NOT NULL
