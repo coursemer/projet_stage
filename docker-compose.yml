@@ -77,6 +77,11 @@ services:
     depends_on:
       - spark-master
     command: bash -c "pip install pyspark && sleep 1000"
-
-volumes:
-  influxdb_data:
+timescaledb:
+  image: timescale/timescaledb:latest-pg14
+  environment:
+    POSTGRES_USER: user
+    POSTGRES_PASSWORD: password
+    POSTGRES_DB: metrics_db
+  ports:
+    - "5432:5432"
