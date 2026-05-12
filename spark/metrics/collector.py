@@ -33,7 +33,6 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 from typing import Optional
-
 BASE_DIR     = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import sys as _sys
@@ -366,3 +365,4 @@ class SparkMetricsEmitter:
             self._store.write(pts)
         except Exception:
             pass
+
