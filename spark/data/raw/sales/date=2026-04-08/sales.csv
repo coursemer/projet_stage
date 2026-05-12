@@ -1,0 +1,6 @@
+order_id,customer_id,product_id,sale_date,quantity,unit_price,channel,region,currency
+ORD-001,c1,p1,2026-04-08,2,10.0,ONLINE,NORTH,EUR
+ORD-002,c2,p2,2026-04-08,1,20.0,STORE,SOUTH,EUR
+ORD-003,c1,p3,2026-04-08,3,5.0,MOBILE,EAST,USD
+ORD-001,c1,p1,2026-04-08,2,10.0,ONLINE,NORTH,EUR
+BAD-999,c3,p4,2026-04-08,-1,0.0,ONLINE,NORTH,EUR

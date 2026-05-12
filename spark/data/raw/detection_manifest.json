@@ -1,0 +1,102 @@
+{
+  "date": "2026-04-21",
+  "input_file": "spark\\data\\raw\\sales_dirty.csv",
+  "detection_mode": "precise",
+  "total_rows_raw": 52500,
+  "total_rows_passed": 45123,
+  "total_rows_caught": 2524,
+  "global_rejection_rate_pct": 4.81,
+  "anomaly_detection_summary": [
+    {
+      "anomaly_type": "nulls",
+      "injected_count": 2500,
+      "tagged_in_csv": 2637,
+      "caught": 2524,
+      "survived": 113,
+      "detection_rate_pct": 95.7,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "duplicates",
+      "injected_count": 2500,
+      "tagged_in_csv": 4581,
+      "caught": 289,
+      "survived": 4292,
+      "detection_rate_pct": 6.3,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "out_of_range",
+      "injected_count": 2625,
+      "tagged_in_csv": 2424,
+      "caught": 121,
+      "survived": 2303,
+      "detection_rate_pct": 5.0,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "type_mismatch",
+      "injected_count": 2625,
+      "tagged_in_csv": 245,
+      "caught": 141,
+      "survived": 104,
+      "detection_rate_pct": 57.6,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "format_violation",
+      "injected_count": 2625,
+      "tagged_in_csv": 2374,
+      "caught": 140,
+      "survived": 2234,
+      "detection_rate_pct": 5.9,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "future_date",
+      "injected_count": 2625,
+      "tagged_in_csv": 2356,
+      "caught": 14,
+      "survived": 2342,
+      "detection_rate_pct": 0.6,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "negative_values",
+      "injected_count": 2625,
+      "tagged_in_csv": 223,
+      "caught": 130,
+      "survived": 93,
+      "detection_rate_pct": 58.3,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "referential_break",
+      "injected_count": 2625,
+      "tagged_in_csv": 2390,
+      "caught": 128,
+      "survived": 2262,
+      "detection_rate_pct": 5.4,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "whitespace_corruption",
+      "injected_count": 2625,
+      "tagged_in_csv": 2333,
+      "caught": 122,
+      "survived": 2211,
+      "detection_rate_pct": 5.2,
+      "detection_mode": "precise"
+    },
+    {
+      "anomaly_type": "revenue_inconsistency",
+      "injected_count": 2625,
+      "tagged_in_csv": 2375,
+      "caught": 122,
+      "survived": 2253,
+      "detection_rate_pct": 5.1,
+      "detection_mode": "precise"
+    }
+  ],
+  "output_parquet": "spark\\data\\staging\\sales_controlled"
+}

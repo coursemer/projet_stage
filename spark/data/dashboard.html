@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Trust — Pipeline Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+         border-bottom: 1px solid #334155; padding: 20px 32px;
+         display: flex; justify-content: space-between; align-items: center; }
+header h1 { font-size: 1.3rem; font-weight: 700; color: #f1f5f9; }
+header h1 span { color: #38bdf8; }
+.gen-ts { font-size: .8rem; color: #64748b; }
+
+main { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+           gap: 14px; margin-bottom: 32px; }
+.kpi { background: #1e293b; border-radius: 12px; padding: 18px 20px;
+       border: 1px solid #334155; position: relative; overflow: hidden; }
+.kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0;
+               height: 3px; background: var(--accent, #38bdf8); }
+.kpi.green { --accent: #22c55e; }
+.kpi.red   { --accent: #ef4444; }
+.kpi.amber { --accent: #f59e0b; }
+.kpi.blue  { --accent: #38bdf8; }
+.kpi .num  { font-size: 2.2rem; font-weight: 800; line-height: 1; color: #f1f5f9; }
+.kpi .lbl  { font-size: .72rem; color: #64748b; text-transform: uppercase;
+             letter-spacing: .6px; margin-top: 6px; }
+
+.section { background: #1e293b; border-radius: 12px; border: 1px solid #334155;
+           padding: 22px 24px; margin-bottom: 24px; }
+.section h2 { font-size: .85rem; font-weight: 600; color: #94a3b8;
+              text-transform: uppercase; letter-spacing: .6px; margin-bottom: 18px; }
+
+.model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+              gap: 12px; margin-bottom: 24px; }
+.model-card { background: #0f172a; border-radius: 10px; padding: 16px;
+              border-left: 4px solid var(--mc, #475569); }
+.model-card.ok   { --mc: #22c55e; }
+.model-card.fail { --mc: #ef4444; }
+.model-name { font-weight: 600; font-size: .9rem; color: #e2e8f0;
+              margin-bottom: 8px; word-break: break-all; }
+.mbadge { display: inline-block; font-size: .7rem; font-weight: 700;
+          padding: 2px 8px; border-radius: 20px; letter-spacing: .5px; }
+.mbadge.ok   { background: #14532d; color: #4ade80; }
+.mbadge.fail { background: #450a0a; color: #f87171; }
+.mstats { margin-top: 10px; font-size: .8rem; color: #64748b;
+          display: flex; flex-direction: column; gap: 3px; }
+.mstats span { color: #94a3b8; }
+
+.charts-row { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+.chart-box { background: #0f172a; border-radius: 10px; padding: 18px;
+             border: 1px solid #1e293b; }
+.chart-box h3 { font-size: .75rem; color: #64748b; margin-bottom: 14px;
+                text-transform: uppercase; letter-spacing: .5px; }
+
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th { padding: 10px 14px; text-align: left; font-size: .72rem; color: #64748b;
+     text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid #334155; }
+td { padding: 10px 14px; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #0f172a; }
+
+.tag { display: inline-block; padding: 2px 8px; border-radius: 20px;
+       font-size: .72rem; font-weight: 600; }
+.tag-dbt     { background: #1e3a5f; color: #60a5fa; }
+.tag-spark   { background: #3b1f0a; color: #fb923c; }
+.tag-airflow { background: #1a2e1a; color: #4ade80; }
+.tag-other   { background: #2d1f3d; color: #c084fc; }
+
+.sev { display: inline-block; padding: 2px 8px; border-radius: 20px;
+       font-size: .72rem; font-weight: 700; }
+.sev.critical { background: #450a0a; color: #f87171; }
+.sev.warning  { background: #431407; color: #fb923c; }
+.sev.info     { background: #0c1a3b; color: #60a5fa; }
+
+.empty { color: #475569; font-style: italic; text-align: center;
+         padding: 28px; font-size: .9rem; }
+
+@media(max-width: 750px) { .charts-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Data Trust <span>Pipeline Dashboard</span></h1>
+    <div class="gen-ts">Généré le 2026-04-29 03:57 UTC &nbsp;·&nbsp; C:\Users\SETUP GAME\projet_stage\spark\data\metrics.db</div>
+  </div>
+</header>
+
+<main>
+
+<!-- KPI row -->
+<div class="kpi-row">
+  <div class="kpi blue"><div class="num">8</div><div class="lbl">Points collectés</div></div>
+  <div class="kpi blue"><div class="num">1</div><div class="lbl">Sources actives</div></div>
+  <div class="kpi green"><div class="num">4</div><div class="lbl">Modèles OK</div></div>
+  <div class="kpi green"><div class="num">0</div><div class="lbl">Modèles en échec</div></div>
+  <div class="kpi green"><div class="num">0</div><div class="lbl">Alertes critiques</div></div>
+  <div class="kpi green"><div class="num">0</div><div class="lbl">Warnings</div></div>
+  <div class="kpi green"><div class="num">0</div><div class="lbl">Non traitées</div></div>
+</div>
+
+<!-- dbt section -->
+<div class="section">
+  <h2>🔷 dbt Pipeline — statut des modèles</h2>
+  <div class="model-grid">
+    <div class="model-card ok"><div class="model-name">int_sales_daily</div><span class="mbadge ok">SUCCESS</span><div class="mstats"><span>Duration: 0.022s</span><span>Rows: —</span><span style="color:#475569">2026-04-29 03:43:43</span></div></div>
+<div class="model-card ok"><div class="model-name">sales_summary</div><span class="mbadge ok">SUCCESS</span><div class="mstats"><span>Duration: 0.112s</span><span>Rows: —</span><span style="color:#475569">2026-04-29 03:43:43</span></div></div>
+<div class="model-card ok"><div class="model-name">stg_events</div><span class="mbadge ok">SUCCESS</span><div class="mstats"><span>Duration: 0.066s</span><span>Rows: —</span><span style="color:#475569">2026-04-29 03:43:43</span></div></div>
+<div class="model-card ok"><div class="model-name">stg_sales</div><span class="mbadge ok">SUCCESS</span><div class="mstats"><span>Duration: 0.090s</span><span>Rows: —</span><span style="color:#475569">2026-04-29 03:43:43</span></div></div>
+  </div>
+
+  <div class="charts-row">
+  <div class="chart-box"><h3>Durée d&apos;exécution par modèle (s)</h3><canvas id="durChart"></canvas></div>
+  <div class="chart-box"><h3>Taux de succès</h3><canvas id="donutChart"></canvas></div>
+  </div>
+</div>
+
+<!-- All metrics table -->
+<div class="section">
+  <h2>📊 Métriques — dernière valeur par série</h2>
+  <table><tr><th>Source</th><th>Métrique</th><th>N</th><th>Dernière</th><th>Moy.</th><th>Min</th><th>Max</th><th>Horodatage</th></tr><tr><td><span class="tag tag-dbt">dbt</span></td><td style='font-family:monospace;font-size:.82rem'>int_sales_daily.model_duration_seconds</td><td style='text-align:right'>1</td><td style='text-align:right;font-weight:700;color:#f1f5f9'>0.021517</td><td style='text-align:right;color:#64748b'>0.02152</td><td style='text-align:right;color:#64748b'>0.02152</td><td style='text-align:right;color:#64748b'>0.02152</td><td style='color:#475569;white-space:nowrap'>2026-04-29 03:43:43</td></tr><tr><td><span class="tag tag-dbt">dbt</span></td><td style='font-family:monospace;font-size:.82rem'>int_sales_daily.model_success</td><td style='text-align:right'>1</td><td style='text-align:right;font-weight:700;color:#f1f5f9'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='color:#475569;white-space:nowrap'>2026-04-29 03:43:43</td></tr><tr><td><span class="tag tag-dbt">dbt</span></td><td style='font-family:monospace;font-size:.82rem'>sales_summary.model_duration_seconds</td><td style='text-align:right'>1</td><td style='text-align:right;font-weight:700;color:#f1f5f9'>0.112231</td><td style='text-align:right;color:#64748b'>0.1122</td><td style='text-align:right;color:#64748b'>0.1122</td><td style='text-align:right;color:#64748b'>0.1122</td><td style='color:#475569;white-space:nowrap'>2026-04-29 03:43:43</td></tr><tr><td><span class="tag tag-dbt">dbt</span></td><td style='font-family:monospace;font-size:.82rem'>sales_summary.model_success</td><td style='text-align:right'>1</td><td style='text-align:right;font-weight:700;color:#f1f5f9'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='color:#475569;white-space:nowrap'>2026-04-29 03:43:43</td></tr><tr><td><span class="tag tag-dbt">dbt</span></td><td style='font-family:monospace;font-size:.82rem'>stg_events.model_duration_seconds</td><td style='text-align:right'>1</td><td style='text-align:right;font-weight:700;color:#f1f5f9'>0.065701</td><td style='text-align:right;color:#64748b'>0.0657</td><td style='text-align:right;color:#64748b'>0.0657</td><td style='text-align:right;color:#64748b'>0.0657</td><td style='color:#475569;white-space:nowrap'>2026-04-29 03:43:43</td></tr><tr><td><span class="tag tag-dbt">dbt</span></td><td style='font-family:monospace;font-size:.82rem'>stg_events.model_success</td><td style='text-align:right'>1</td><td style='text-align:right;font-weight:700;color:#f1f5f9'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='color:#475569;white-space:nowrap'>2026-04-29 03:43:43</td></tr><tr><td><span class="tag tag-dbt">dbt</span></td><td style='font-family:monospace;font-size:.82rem'>stg_sales.model_duration_seconds</td><td style='text-align:right'>1</td><td style='text-align:right;font-weight:700;color:#f1f5f9'>0.090144</td><td style='text-align:right;color:#64748b'>0.09014</td><td style='text-align:right;color:#64748b'>0.09014</td><td style='text-align:right;color:#64748b'>0.09014</td><td style='color:#475569;white-space:nowrap'>2026-04-29 03:43:43</td></tr><tr><td><span class="tag tag-dbt">dbt</span></td><td style='font-family:monospace;font-size:.82rem'>stg_sales.model_success</td><td style='text-align:right'>1</td><td style='text-align:right;font-weight:700;color:#f1f5f9'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='text-align:right;color:#64748b'>1</td><td style='color:#475569;white-space:nowrap'>2026-04-29 03:43:43</td></tr></table>
+</div>
+
+<!-- Alerts -->
+<div class="section">
+  <h2>🚨 Alertes récentes (50 dernières)</h2>
+  <p class="empty">✅ Aucune alerte récente.</p>
+</div>
+
+</main>
+
+<script>
+const labels    = ["int_sales_daily", "sales_summary", "stg_events", "stg_sales"];
+const durations = [0.0215, 0.1122, 0.0657, 0.0901];
+const colors    = ["#22c55e", "#22c55e", "#22c55e", "#22c55e"];
+
+if (labels.length > 0) {
+  new Chart(document.getElementById('durChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Durée (s)',
+        data: durations,
+        backgroundColor: colors,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { color: '#64748b' },
+          grid:  { color: '#1e293b' },
+        },
+        y: {
+          ticks: { color: '#94a3b8' },
+          grid:  { color: '#1e293b' },
+        }
+      }
+    }
+  });
+
+  new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Success', 'Failed', 'Unknown'],
+      datasets: [{
+        data: [4, 0, 0],
+        backgroundColor: ["#22c55e", "#ef4444", "#64748b"],
+        borderWidth: 0,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '65%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#94a3b8', padding: 16, boxWidth: 12 }
+        }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
