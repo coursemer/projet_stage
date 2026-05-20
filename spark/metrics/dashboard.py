@@ -22,11 +22,13 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 try:
-    from .storage       import SQLiteMetricsStore, DEFAULT_DB
-    from .alert_manager import AlertManager
+    from .storage          import SQLiteMetricsStore, DEFAULT_DB
+    from .alert_manager    import AlertManager
+    from .pipeline_adapter import build_pipeline_snapshots
 except ImportError:
-    from spark.metrics.storage       import SQLiteMetricsStore, DEFAULT_DB
-    from spark.metrics.alert_manager import AlertManager
+    from spark.metrics.storage          import SQLiteMetricsStore, DEFAULT_DB
+    from spark.metrics.alert_manager    import AlertManager
+    from spark.metrics.pipeline_adapter import build_pipeline_snapshots
 
 DEFAULT_OUT = os.path.join(BASE_DIR, "spark", "data", "dashboard.html")
 
@@ -125,12 +127,27 @@ tr:hover td { background: #0f172a; }
 
 .sev { display: inline-block; padding: 2px 8px; border-radius: 20px;
        font-size: .72rem; font-weight: 700; }
-.sev.critical { background: #450a0a; color: #f87171; }
+.sev.critical { background: #e74c3c; color: #fff; }
 .sev.warning  { background: #431407; color: #fb923c; }
 .sev.info     { background: #0c1a3b; color: #60a5fa; }
 
 .empty { color: #475569; font-style: italic; text-align: center;
          padding: 28px; font-size: .9rem; }
+
+/* ML pipeline cards */
+.pipeline-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr));
+                 gap: 12px; }
+.pipeline-card { background: #0f172a; border-radius: 10px; padding: 16px;
+                 border-left: 4px solid var(--pc, #475569); }
+.pipeline-card.ok       { --pc: #22c55e; }
+.pipeline-card.critical { --pc: #e74c3c; }
+.pipeline-card.warning  { --pc: #f59e0b; }
+.pipeline-card.info     { --pc: #38bdf8; }
+.pipeline-name { font-weight: 700; font-size: .9rem; color: #e2e8f0; margin-bottom: 8px; }
+.pipeline-stat { font-size: .78rem; color: #64748b; margin-top: 3px; }
+.pipeline-stat span { color: #94a3b8; }
+.llm-explanation { margin-top: 10px; font-size: .75rem; color: #94a3b8; line-height: 1.45;
+                   border-top: 1px solid #1e293b; padding-top: 8px; font-style: italic; }
 
 @media(max-width: 750px) { .charts-row { grid-template-columns: 1fr; } }
 """
@@ -237,18 +254,90 @@ def _alerts_table(alerts: list[dict]) -> str:
     )
 
 
+def _ml_pipeline_cards(snapshots: dict, ml_alerts: list[dict]) -> str:
+    """Renders one card per pipeline with ML status and key metrics."""
+    if not snapshots:
+        return '<p class="empty">Aucun pipeline detecté dans le store. Lancez run_collector.py d\'abord.</p>'
+
+    # Count ML alerts per pipeline
+    alerts_by_pipeline: dict = {}
+    worst_by_pipeline: dict  = {}
+    for a in ml_alerts:
+        src = a.get("source", "")
+        alerts_by_pipeline[src] = alerts_by_pipeline.get(src, 0) + 1
+        sev = a.get("severity", "info")
+        cur = worst_by_pipeline.get(src, "info")
+        if sev == "critical" or (sev == "warning" and cur == "info"):
+            worst_by_pipeline[src] = sev
+
+    cards = []
+    for pipeline_name, (current, history) in sorted(snapshots.items()):
+        n_alerts = alerts_by_pipeline.get(pipeline_name, 0)
+        worst    = worst_by_pipeline.get(pipeline_name, "ok") if n_alerts else "ok"
+        cls      = worst if n_alerts else "ok"
+
+        rc  = f"{current.row_count:,}" if current.row_count is not None else "—"
+        dur = f"{current.duration_seconds:.1f}s" if current.duration_seconds is not None else "—"
+        ok  = ("✅ OK" if current.success else "❌ Échec") if current.success is not None else "—"
+        hist_days = len(history)
+
+        alert_badge = (
+            f'<span class="sev {worst}">{n_alerts} alerte{"s" if n_alerts > 1 else ""}</span>'
+            if n_alerts else
+            '<span style="color:#4ade80;font-size:.75rem">✅ Sain</span>'
+        )
+
+        llm_block = ""
+        if n_alerts:
+            pipeline_alerts = [a for a in ml_alerts if a.get("source") == pipeline_name]
+            for a in pipeline_alerts[:2]:
+                tags = a.get("tags", {})
+                if isinstance(tags, str):
+                    import json as _json
+                    try:
+                        tags = _json.loads(tags)
+                    except Exception:
+                        tags = {}
+                expl = tags.get("llm_explanation", "")
+                bk   = tags.get("llm_backend", "")
+                if expl:
+                    bk_label = f' <span style="font-size:.7rem;color:#94a3b8">[{escape(bk)}]</span>' if bk else ""
+                    llm_block += (
+                        f'<div class="llm-explanation">'
+                        f'💬{bk_label} {escape(expl[:250])}'
+                        f'</div>'
+                    )
+
+        cards.append(
+            f'<div class="pipeline-card {cls}">'
+            f'<div class="pipeline-name">{escape(pipeline_name)}</div>'
+            f'{alert_badge}'
+            f'<div class="pipeline-stat"><span>Lignes en sortie :</span> {rc}</div>'
+            f'<div class="pipeline-stat"><span>Durée :</span> {dur}</div>'
+            f'<div class="pipeline-stat"><span>Statut :</span> {ok}</div>'
+            f'<div class="pipeline-stat"><span>Historique :</span> {hist_days} jour(s)</div>'
+            f'{llm_block}'
+            f'</div>'
+        )
+    return f'<div class="pipeline-grid">{"".join(cards)}</div>'
+
+
 # ── Main generator ────────────────────────────────────────────────────────────
 
 def generate(db_path: str = DEFAULT_DB, out_path: str = DEFAULT_OUT) -> str:
     store     = SQLiteMetricsStore(db_path=db_path)
     mgr       = AlertManager(db_path=db_path)
 
-    total_pts = store.count()
-    summary   = store.summary()
-    sources   = store.sources()
-    alert_sum = mgr.summary()
-    alerts    = mgr.query(limit=50)
-    dbt_rows  = store.query(source="dbt", limit=2000)
+    total_pts  = store.count()
+    summary    = store.summary()
+    sources    = store.sources()
+    alert_sum  = mgr.summary()
+    alerts     = mgr.query(limit=50)
+    ml_alerts  = mgr.query(algorithm="ml:%", limit=100) if hasattr(mgr, "_query_like") else [
+        a for a in mgr.query(limit=200) if str(a.get("algorithm", "")).startswith("ml:")
+    ]
+    dbt_rows   = store.query(source="dbt", limit=2000)
+    pipeline_snapshots = build_pipeline_snapshots(store)
 
     n_critical = next((r["count"] for r in alert_sum["by_severity"] if r["severity"] == "critical"), 0)
     n_warning  = next((r["count"] for r in alert_sum["by_severity"] if r["severity"] == "warning"),  0)
@@ -320,6 +409,12 @@ def generate(db_path: str = DEFAULT_DB, out_path: str = DEFAULT_OUT) -> str:
 <div class="section">
   <h2>📊 Métriques — dernière valeur par série</h2>
   {_metrics_table(summary)}
+</div>
+
+<!-- ML Pipelines -->
+<div class="section">
+  <h2>🤖 Pipelines — Analyse ML (Semaine 10)</h2>
+  {_ml_pipeline_cards(pipeline_snapshots, ml_alerts)}
 </div>
 
 <!-- Alerts -->

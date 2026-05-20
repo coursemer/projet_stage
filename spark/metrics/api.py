@@ -44,13 +44,28 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 try:
-    from .storage          import MetricPoint, SQLiteMetricsStore, DEFAULT_DB
-    from .anomaly_detector import AnomalyDetector
-    from .alert_manager    import AlertManager
+    from .storage           import MetricPoint, SQLiteMetricsStore, DEFAULT_DB
+    from .anomaly_detector  import AnomalyDetector, AnomalyAlert
+    from .alert_manager     import AlertManager
+    from .pipeline_adapter  import build_pipeline_snapshots
+    from .anomaly_detection import AnomalyDetector as MLAnomalyDetector
+    from .anomaly_detection.models import Severity as MLSeverity
+    from .llm_explainer     import LLMExplainer
 except ImportError:
-    from spark.metrics.storage          import MetricPoint, SQLiteMetricsStore, DEFAULT_DB
-    from spark.metrics.anomaly_detector import AnomalyDetector
-    from spark.metrics.alert_manager    import AlertManager
+    from spark.metrics.storage                  import MetricPoint, SQLiteMetricsStore, DEFAULT_DB
+    from spark.metrics.anomaly_detector         import AnomalyDetector, AnomalyAlert
+    from spark.metrics.alert_manager            import AlertManager
+    from spark.metrics.pipeline_adapter         import build_pipeline_snapshots
+    from spark.metrics.anomaly_detection        import AnomalyDetector as MLAnomalyDetector
+    from spark.metrics.anomaly_detection.models import Severity as MLSeverity
+    from spark.metrics.llm_explainer            import LLMExplainer
+
+_ML_SEV_MAP = {
+    MLSeverity.CRITICAL: "critical",
+    MLSeverity.HIGH:     "warning",
+    MLSeverity.MEDIUM:   "warning",
+    MLSeverity.LOW:      "info",
+}
 
 
 # ── Pydantic schema — défini au niveau module pour que Pydantic v2 puisse le résoudre ──
@@ -196,6 +211,94 @@ def create_app(db_path: str = DEFAULT_DB) -> "FastAPI":  # type: ignore[return]
         if not ok:
             raise HTTPException(status_code=404, detail=f"Alerte {alert_id} introuvable")
         return {"acknowledged": True, "alert_id": alert_id}
+
+    @app.post("/api/v1/alerts/detect-ml", status_code=201)
+    def detect_anomalies_ml():
+        """Détection ML multi-couches (Volume/Distribution/Schema/Performance/Temporal/ML)."""
+        snapshots  = build_pipeline_snapshots(store)
+        all_alerts: list = []
+        results_by_pipeline: dict = {}
+
+        for pipeline_name, (current, history) in snapshots.items():
+            try:
+                detector = MLAnomalyDetector.for_pipeline(pipeline_name=pipeline_name)
+                result   = detector.detect(current, history)
+            except Exception as exc:
+                results_by_pipeline[pipeline_name] = {"error": str(exc)}
+                continue
+
+            pipeline_alerts = []
+            for anomaly in result.anomalies:
+                sev_str = _ML_SEV_MAP.get(anomaly.severity, "info")
+                alert   = AnomalyAlert(
+                    metric_name=anomaly.metric_name,
+                    source=pipeline_name,
+                    algorithm=f"ml:{anomaly.level}",
+                    severity=sev_str,
+                    value=anomaly.observed_value or 0.0,
+                    expected=(
+                        str(anomaly.expected_value)
+                        if anomaly.expected_value is not None
+                        else anomaly.description[:80]
+                    ),
+                    details=anomaly.description + f" [score={anomaly.severity_score:.1f}]",
+                )
+                pipeline_alerts.append(alert)
+                all_alerts.append(alert)
+
+            results_by_pipeline[pipeline_name] = result.summary()
+
+        n_saved = alert_mgr.save(all_alerts)
+        by_sev: dict = {}
+        for a in all_alerts:
+            by_sev[a.severity] = by_sev.get(a.severity, 0) + 1
+
+        return {
+            "pipelines_analyzed": len(snapshots),
+            "detected":           len(all_alerts),
+            "saved":              n_saved,
+            "by_severity":        by_sev,
+            "by_pipeline":        results_by_pipeline,
+            "ts":                 datetime.now(timezone.utc).isoformat(),
+        }
+
+    @app.post("/api/v1/alerts/explain", status_code=200)
+    def explain_alerts(
+        source:   Optional[str] = Query(None, description="Filtrer par pipeline"),
+        severity: Optional[str] = Query(None, description="critical | warning | info"),
+        limit:    int           = Query(20,   description="Nombre max d'alertes à expliquer"),
+    ):
+        """
+        Génère des explications LLM (Mistral AI) pour les alertes ML récentes.
+        Ref: analyse_llm.docx — Mistral Large 2, RGPD-conforme, hébergé en France.
+        Fallback: Ollama local → template si aucun backend disponible.
+        """
+        ml_alerts = [
+            a for a in alert_mgr.query(source=source, severity=severity, limit=limit * 3)
+            if str(a.get("algorithm", "")).startswith("ml:")
+        ][:limit]
+
+        if not ml_alerts:
+            return {"explained": 0, "results": []}
+
+        explainer = LLMExplainer()
+        results   = []
+        for alert in ml_alerts:
+            text, backend = explainer.explain_alert_dict(alert)
+            results.append({
+                "alert_id":    alert.get("id"),
+                "source":      alert.get("source"),
+                "metric_name": alert.get("metric_name"),
+                "severity":    alert.get("severity"),
+                "explanation": text,
+                "backend":     backend,
+            })
+
+        return {
+            "explained": len(results),
+            "results":   results,
+            "ts":        datetime.now(timezone.utc).isoformat(),
+        }
 
     @app.post("/api/v1/alerts/acknowledge-all")
     def acknowledge_all_alerts(

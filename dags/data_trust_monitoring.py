@@ -50,7 +50,7 @@ with DAG(
         ),
     )
 
-    # ── ÉTAPE 2 : Détection des anomalies ────────────────────────────────────
+    # ── ÉTAPE 2a : Détection anomalies (règles zscore/IQR/threshold) ───────────
     detect_anomalies = BashOperator(
         task_id="detect_anomalies",
         bash_command=(
@@ -58,6 +58,30 @@ with DAG(
             f"--db {DB_PATH} "
             "--source all "
             "--detect "
+            "--json"
+        ),
+    )
+
+    # ── ÉTAPE 2b : Détection ML multi-couches (Volume/Distribution/Schema/…) ──
+    detect_anomalies_ml = BashOperator(
+        task_id="detect_anomalies_ml",
+        bash_command=(
+            f"python {METRICS_CLI} "
+            f"--db {DB_PATH} "
+            "--detect-ml "
+            "--json"
+        ),
+    )
+
+    # ── ÉTAPE 2c : Explication LLM (Mistral AI — Semaine 10) ─────────────────
+    # Active uniquement si MISTRAL_API_KEY est défini. Fallback Ollama/template.
+    explain_anomalies_llm = BashOperator(
+        task_id="explain_anomalies_llm",
+        bash_command=(
+            f"python {METRICS_CLI} "
+            f"--db {DB_PATH} "
+            "--detect-ml "
+            "--explain "
             "--json"
         ),
     )
@@ -100,4 +124,7 @@ with DAG(
     )
 
     # ── DAG flow ──────────────────────────────────────────────────────────────
-    collect_metrics >> detect_anomalies >> generate_dashboard >> print_alert_summary
+    # collect → [règles, ML] → LLM explain → dashboard → résumé alertes
+    collect_metrics >> [detect_anomalies, detect_anomalies_ml]
+    detect_anomalies_ml >> explain_anomalies_llm
+    [detect_anomalies, explain_anomalies_llm] >> generate_dashboard >> print_alert_summary

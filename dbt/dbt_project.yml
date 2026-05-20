@@ -19,7 +19,7 @@ models:
     marts:
       materialized: table
 name: projet_stage_dbt
-profile: default
+profile: wwi_duckdb
 snapshot-paths:
 - snapshots
 target-path: target

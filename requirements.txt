@@ -7,3 +7,4 @@ kaggle>=1.7.4
 fastapi>=0.100.0
 uvicorn>=0.23.0
 influxdb-client>=1.36.0
+mistralai>=1.0.0
