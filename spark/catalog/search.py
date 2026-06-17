@@ -22,7 +22,6 @@ from __future__ import annotations
 import math
 import os
 import re
-from collections import Counter
 from typing import List, Optional
 
 from .models import CatalogEntry, SearchResult

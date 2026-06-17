@@ -36,7 +36,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import threading
 import time
 from typing import Optional
 
@@ -45,9 +44,8 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 try:
-    import prometheus_client as prom
     from prometheus_client import (
-        CollectorRegistry, Gauge, Counter, generate_latest, CONTENT_TYPE_LATEST,
+        CollectorRegistry, Gauge, generate_latest, CONTENT_TYPE_LATEST,
     )
     _PROM_OK = True
 except ImportError:
@@ -249,7 +247,7 @@ def _serve_standalone(port: int, db_path: str, interval: int) -> None:
                 self.send_response(404)
                 self.end_headers()
 
-        def log_message(self, fmt, *args):  # silence default access log
+        def log_message(self, *args, **kwargs):  # silence default access log
             pass
 
     httpd = HTTPServer(("0.0.0.0", port), Handler)

@@ -153,12 +153,6 @@ class DataCatalog:
             )
             conn.commit()
 
-    def delete(self, name: str) -> bool:
-        with self._connect() as conn:
-            cur = conn.execute("DELETE FROM catalog_entries WHERE name=?", (name,))
-            conn.commit()
-        return cur.rowcount > 0
-
     def count(self) -> int:
         with self._connect() as conn:
             return conn.execute("SELECT COUNT(*) FROM catalog_entries").fetchone()[0]

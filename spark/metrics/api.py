@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from fastapi import FastAPI, HTTPException, Query
+    from fastapi import FastAPI, HTTPException, Query, Request
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel, Field
     _FASTAPI_OK = True
@@ -318,14 +318,13 @@ def create_app(db_path: str = DEFAULT_DB) -> "FastAPI":  # type: ignore[return]
         return {"acknowledged": n}
 
     @app.post("/api/v1/alerts/webhook")
-    async def alertmanager_webhook(request: "Request"):  # type: ignore[name-defined]
+    async def alertmanager_webhook(request: Request):
         """
         Receiver webhook pour Prometheus AlertManager.
         AlertManager POST ici quand une alerte fire ou se résout.
         Persiste les alertes reçues dans la table alerts SQLite.
         """
         try:
-            from fastapi import Request as _Request
             payload = await request.json()
         except Exception:
             return {"received": 0}

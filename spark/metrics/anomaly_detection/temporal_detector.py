@@ -10,7 +10,6 @@ Detects time-aware anomalies that point-in-time detectors miss:
 from __future__ import annotations
 
 import uuid
-from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 

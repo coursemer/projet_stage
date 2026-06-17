@@ -114,9 +114,6 @@ class LineageGraph:
                     queue.append(down)
         return list(visited)
 
-    def node_names(self) -> List[str]:
-        return [n.name for n in self.nodes]
-
     def merge(self, other: "LineageGraph") -> "LineageGraph":
         """Fusionne deux graphes (dbt + Spark) sans doublons."""
         existing_names = {n.name for n in self.nodes}

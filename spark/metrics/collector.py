@@ -340,7 +340,7 @@ class SparkMetricsEmitter:
         """Met à jour les métriques en cours de job."""
         self._data.update(kwargs)
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type, *_) -> None:
         duration = round(time.monotonic() - self._start, 3)
         self._data["duration_seconds"] = duration
         self._data["status"]   = "error" if exc_type else "ok"
