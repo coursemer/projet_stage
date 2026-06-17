@@ -52,7 +52,7 @@ receivers:
   # ── Receiver par défaut — webhook vers Data Trust API ─────────────────────
   - name: default
     webhook_configs:
-      - url:           'http://metrics-api:8090/api/v1/alerts/webhook'
+      - url:           'http://host.docker.internal:8090/api/v1/alerts/webhook'
         send_resolved: true
         http_config:
           tls_config:
@@ -61,7 +61,7 @@ receivers:
   # ── CRITICAL — webhook + email (décommenter et configurer pour activer) ───
   - name: ops-critical
     webhook_configs:
-      - url:           'http://metrics-api:8090/api/v1/alerts/webhook'
+      - url:           'http://host.docker.internal:8090/api/v1/alerts/webhook'
         send_resolved: true
     ## Pour Teams : décommenter et remplacer l'URL du webhook
     # - url:           'https://outlook.office.com/webhook/VOTRE-WEBHOOK-TEAMS'
@@ -83,13 +83,13 @@ receivers:
   # ── WARNING — webhook ─────────────────────────────────────────────────────
   - name: ops-warning
     webhook_configs:
-      - url:           'http://metrics-api:8090/api/v1/alerts/webhook'
+      - url:           'http://host.docker.internal:8090/api/v1/alerts/webhook'
         send_resolved: true
 
   # ── Pipeline clean_sales — receiver dédié ────────────────────────────────
   - name: pipeline-clean-sales
     webhook_configs:
-      - url:           'http://metrics-api:8090/api/v1/alerts/webhook'
+      - url:           'http://host.docker.internal:8090/api/v1/alerts/webhook'
         send_resolved: true
 
   # ── Sink — absorbe les alertes info sans notification ─────────────────────

@@ -16,7 +16,7 @@ services:
       INFLUX_ORG: data-trust
       INFLUX_BUCKET: metrics
     command: >
-      bash -c "pip install fastapi uvicorn influxdb-client pydantic prometheus_client scikit-learn --quiet &&
+      bash -c "pip install -r requirements-api.txt --quiet &&
                python spark/metrics/api.py --host 0.0.0.0 --port 8090"
 
   airflow:
