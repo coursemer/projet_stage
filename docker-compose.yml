@@ -16,7 +16,7 @@ services:
       INFLUX_ORG: data-trust
       INFLUX_BUCKET: metrics
     command: >
-      bash -c "pip install fastapi uvicorn influxdb-client pydantic --quiet &&
+      bash -c "pip install fastapi uvicorn influxdb-client pydantic prometheus_client scikit-learn --quiet &&
                python spark/metrics/api.py --host 0.0.0.0 --port 8090"
 
   airflow:
@@ -80,3 +80,50 @@ services:
       DOCKER_INFLUXDB_INIT_ORG: data-trust
       DOCKER_INFLUXDB_INIT_BUCKET: metrics
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: data-trust-token-2026
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  # UI  : http://localhost:9090
+  # API : http://localhost:9090/api/v1/
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./configs/prometheus_rules.yml:/etc/prometheus/rules/data_trust.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    depends_on:
+      - metrics-api
+    restart: unless-stopped
+
+  # ── Prometheus AlertManager ─────────────────────────────────────────────────
+  # UI  : http://localhost:9093
+  # API : http://localhost:9093/api/v2/
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.listen-address=:9093'
+      - '--cluster.listen-address='    # mode single-instance (pas de HA)
+    environment:
+      SMTP_PASSWORD:    '${SMTP_PASSWORD:-changeme}'
+      TEAMS_WEBHOOK_URL: '${TEAMS_WEBHOOK_URL:-http://localhost:8090/api/v1/webhook}'
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  alertmanager_data:

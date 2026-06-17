@@ -102,8 +102,16 @@ def create_app(db_path: str = DEFAULT_DB) -> "FastAPI":  # type: ignore[return]
         allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
     )
 
-    store   = SQLiteMetricsStore(db_path=db_path)
+    store     = SQLiteMetricsStore(db_path=db_path)
     alert_mgr = AlertManager(db_path=db_path)
+
+    # ── Prometheus /metrics endpoint ──────────────────────────────────────────
+    try:
+        from spark.metrics.prometheus_exporter import PrometheusExporter, add_metrics_route
+        _prom_exporter = PrometheusExporter(store, alert_mgr)
+        add_metrics_route(app, _prom_exporter)
+    except Exception:
+        pass  # prometheus_client non installé → endpoint silencieusement absent
 
     # ── Routes ────────────────────────────────────────────────────────────────
 

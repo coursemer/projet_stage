@@ -83,9 +83,10 @@ class NotificationChannel:
     name:   str
     config: Dict[str, Any] = field(default_factory=dict)
 
-    def is_teams(self)   -> bool: return self.name == "teams"
-    def is_email(self)   -> bool: return self.name == "email"
-    def is_console(self) -> bool: return self.name == "console"
+    def is_teams(self)        -> bool: return self.name == "teams"
+    def is_email(self)        -> bool: return self.name == "email"
+    def is_console(self)      -> bool: return self.name == "console"
+    def is_alertmanager(self) -> bool: return self.name == "alertmanager"
 
 
 # ─── IncidentRecord ───────────────────────────────────────────────────────────

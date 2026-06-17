@@ -2,9 +2,20 @@
 NotificationService — Envoi de notifications multi-canaux (Semaine 14).
 
 Canaux supportés :
-  console — affichage terminal (toujours disponible, fallback garanti)
-  teams   — webhook Microsoft Teams (HTTP POST JSON)
-  email   — SMTP (smtplib standard, TLS optionnel)
+  console      — affichage terminal (toujours disponible, fallback garanti)
+  teams        — webhook Microsoft Teams (HTTP POST JSON)
+  email        — SMTP (smtplib standard, TLS optionnel)
+  alertmanager — Prometheus AlertManager API v2 (POST /api/v2/alerts)
+
+Canal alertmanager :
+  Envoie les alertes directement à Prometheus AlertManager qui gère ensuite
+  le routage vers Teams, Email, PagerDuty, etc. selon alertmanager.yml.
+
+  NotificationChannel("alertmanager", {
+      "url": "http://localhost:9093",   # URL AlertManager
+      "generator_url": "http://localhost:8090",  # lien retour (optionnel)
+      "resolve_timeout": "5m",         # durée avant résolution auto (optionnel)
+  })
 
 Cooldown :
   Un log SQLite (notification_log) évite de renvoyer la même alerte
@@ -15,6 +26,7 @@ Usage :
 
     svc = NotificationService(channels=[
         NotificationChannel("console"),
+        NotificationChannel("alertmanager", {"url": "http://localhost:9093"}),
         NotificationChannel("teams", {"webhook_url": "https://..."}),
         NotificationChannel("email", {
             "smtp_host": "smtp.gmail.com", "smtp_port": 587,
@@ -22,7 +34,7 @@ Usage :
             "from_addr": "alert@co.fr", "use_tls": True,
         }),
     ])
-    rule = AlertRule(channels=["teams", "email"], recipients=["ops@co.fr"])
+    rule = AlertRule(channels=["alertmanager"], recipients=[])
     results = svc.notify(alert_dict, rule)
 """
 from __future__ import annotations
@@ -138,6 +150,8 @@ class NotificationService:
             return self._send_teams(channel, alert, pipeline, metric, severity)
         elif channel.is_email():
             return self._send_email(channel, alert, pipeline, metric, severity, rule.recipients)
+        elif channel.is_alertmanager():
+            return self._send_alertmanager(channel, alert, pipeline, metric, severity)
         else:
             return self._send_console(alert, pipeline, metric, severity)
 
@@ -210,6 +224,88 @@ class NotificationService:
         with urllib.request.urlopen(req, timeout=10) as resp:
             status = resp.status
         return f"HTTP {status}"
+
+    def _send_alertmanager(
+        self,
+        channel:  NotificationChannel,
+        alert:    Dict,
+        pipeline: str,
+        metric:   str,
+        severity: str,
+    ) -> str:
+        """
+        POST l'alerte vers Prometheus AlertManager /api/v2/alerts.
+
+        AlertManager gère ensuite le routage selon alertmanager.yml :
+          - grouping, deduplication, silences, inhibition
+          - envoi vers Teams / Email / PagerDuty / Slack selon les receivers
+
+        Format d'alerte Prometheus :
+          labels      → identifient l'alerte (grouping key)
+          annotations → texte lisible (summary, description)
+          startsAt    → début de l'alerte (ISO-8601)
+          endsAt      → résolution auto si Prometheus ne re-poste pas avant
+          generatorURL→ lien vers la source (dashboard / règle)
+        """
+        base_url = channel.config.get("url", "http://localhost:9093").rstrip("/")
+        endpoint = f"{base_url}/api/v2/alerts"
+        generator_url = channel.config.get(
+            "generator_url", "http://localhost:8090/api/v1/alerts"
+        )
+
+        # Mappe nos sévérités → labels Prometheus standard
+        sev_label_map = {
+            "CRITICAL": "critical",
+            "HIGH":     "warning",
+            "MEDIUM":   "warning",
+            "LOW":      "info",
+        }
+        prom_severity = sev_label_map.get(severity.upper(), "warning")
+
+        # Nom d'alerte Prometheus (CamelCase, sans espaces)
+        alert_name = (
+            metric.replace(".", "_").replace("-", "_").title().replace("_", "")
+        )
+
+        val     = alert.get("value", "N/A")
+        details = alert.get("details", "")
+        ts      = alert.get("ts", datetime.now(timezone.utc).isoformat())
+
+        payload = [
+            {
+                "labels": {
+                    "alertname":    alert_name,
+                    "severity":     prom_severity,
+                    "pipeline":     pipeline,
+                    "metric":       metric,
+                    "source":       "data-trust-agent",
+                    "environment":  "production",
+                },
+                "annotations": {
+                    "summary":     f"[{severity}] {pipeline} — {metric} = {val}",
+                    "description": details or f"Anomalie détectée sur {metric}",
+                    "runbook_url": f"http://localhost:8090/api/v1/rules",
+                },
+                "startsAt":      ts,
+                "generatorURL":  generator_url,
+            }
+        ]
+        body = json.dumps(payload).encode("utf-8")
+
+        if self.dry_run:
+            return f"[dry-run] POST {endpoint} — {prom_severity} / {alert_name} ({len(body)} bytes)"
+
+        req = urllib.request.Request(
+            endpoint,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return f"HTTP {resp.status} → AlertManager"
+        except Exception as exc:
+            raise RuntimeError(f"AlertManager unreachable at {endpoint}: {exc}") from exc
 
     def _send_email(
         self,

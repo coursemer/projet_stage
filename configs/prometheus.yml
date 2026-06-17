@@ -1,0 +1,49 @@
+## Prometheus — Data Trust Agent
+## Docs : https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+##
+## Démarrage : docker compose up prometheus
+## UI        : http://localhost:9090
+## Targets   : http://localhost:9090/targets
+
+global:
+  scrape_interval:     15s   # scrape toutes les 15 secondes
+  evaluation_interval: 15s   # évalue les règles toutes les 15 secondes
+  scrape_timeout:      10s
+
+  external_labels:
+    environment: 'production'
+    project:     'data-trust-agent'
+
+# ── Alertmanager ──────────────────────────────────────────────────────────────
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'   # service Docker Compose
+      timeout: 10s
+
+# ── Règles d'alerte ───────────────────────────────────────────────────────────
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# ── Scrape configs ────────────────────────────────────────────────────────────
+scrape_configs:
+
+  # Data Trust API — métriques exposées par PrometheusExporter
+  - job_name: 'data-trust-metrics'
+    static_configs:
+      - targets: ['metrics-api:8090']   # service Docker Compose
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout:  10s
+
+  # Prometheus lui-même
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # AlertManager
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+    metrics_path: '/metrics'

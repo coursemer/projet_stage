@@ -1,0 +1,131 @@
+## Règles d'alerte Prometheus — Data Trust Agent
+## Fichier à monter dans le conteneur Prometheus : /etc/prometheus/rules/data_trust.yml
+##
+## Ces règles évaluent les métriques exposées par PrometheusExporter (GET /metrics)
+## et déclenchent des alertes vers AlertManager quand les seuils sont dépassés.
+
+groups:
+
+  # ── Qualité des données ────────────────────────────────────────────────────
+  - name: data_quality
+    interval: 30s
+    rules:
+
+      # Taux de rejet > 20 % → CRITICAL
+      - alert: RejectionRateCritical
+        expr: data_trust_job_rejection_rate_pct > 20
+        for:  1m
+        labels:
+          severity: critical
+          team:     data-ops
+        annotations:
+          summary:     "Taux de rejet critique — {{ $labels.pipeline }}"
+          description: "job.rejection_rate_pct = {{ $value | printf \"%.1f\" }} % (seuil 20 %) sur le pipeline {{ $labels.pipeline }}"
+          runbook_url: "http://localhost:8090/api/v1/rules"
+
+      # Taux de rejet > 5 % → WARNING
+      - alert: RejectionRateWarning
+        expr: data_trust_job_rejection_rate_pct > 5
+        for:  2m
+        labels:
+          severity: warning
+          team:     data-ops
+        annotations:
+          summary:     "Taux de rejet élevé — {{ $labels.pipeline }}"
+          description: "job.rejection_rate_pct = {{ $value | printf \"%.1f\" }} % (seuil 5 %) sur {{ $labels.pipeline }}"
+
+      # Taux de nulls > 30 % → WARNING
+      - alert: NullRateHigh
+        expr: data_trust_job_null_rate_pct > 30
+        for:  2m
+        labels:
+          severity: warning
+          team:     data-ops
+        annotations:
+          summary:     "Taux de nulls élevé — {{ $labels.pipeline }}"
+          description: "job.null_rate_pct = {{ $value | printf \"%.1f\" }} % (seuil 30 %)"
+
+      # Taux de doublons > 10 % → WARNING
+      - alert: DuplicateRateHigh
+        expr: data_trust_job_duplicate_rate_pct > 10
+        for:  2m
+        labels:
+          severity: warning
+          team:     data-ops
+        annotations:
+          summary:     "Pics de doublons — {{ $labels.pipeline }}"
+          description: "job.duplicate_rate_pct = {{ $value | printf \"%.1f\" }} % (seuil 10 %)"
+
+  # ── Volume ─────────────────────────────────────────────────────────────────
+  - name: data_volume
+    interval: 30s
+    rules:
+
+      # Chute de volume > 90 % par rapport à 1h avant → CRITICAL
+      - alert: VolumeDropCritical
+        expr: |
+          (
+            data_trust_job_rows_output
+            / on(pipeline) data_trust_job_rows_output offset 1h
+          ) < 0.1
+        for:  1m
+        labels:
+          severity: critical
+          team:     data-ops
+        annotations:
+          summary:     "Chute de volume critique — {{ $labels.pipeline }}"
+          description: "Le volume actuel est < 10 % du volume il y a 1h sur {{ $labels.pipeline }}"
+
+      # Volume = 0 → CRITICAL
+      - alert: VolumeZero
+        expr: data_trust_job_rows_output == 0
+        for:  5m
+        labels:
+          severity: critical
+          team:     data-ops
+        annotations:
+          summary:     "Volume zéro — {{ $labels.pipeline }}"
+          description: "Aucune ligne produite par {{ $labels.pipeline }} depuis 5 minutes"
+
+  # ── Performance (SLA) ──────────────────────────────────────────────────────
+  - name: performance
+    interval: 30s
+    rules:
+
+      # Durée > 300s → WARNING
+      - alert: JobDurationSLAWarning
+        expr: data_trust_job_duration_seconds > 300
+        for:  1m
+        labels:
+          severity: warning
+          team:     data-ops
+        annotations:
+          summary:     "SLA dépassé — {{ $labels.pipeline }}"
+          description: "Durée = {{ $value | printf \"%.0f\" }} s (SLA 300 s) sur {{ $labels.pipeline }}"
+
+      # Durée > 600s → CRITICAL
+      - alert: JobDurationSLACritical
+        expr: data_trust_job_duration_seconds > 600
+        for:  1m
+        labels:
+          severity: critical
+          team:     data-ops
+        annotations:
+          summary:     "SLA critique — {{ $labels.pipeline }}"
+          description: "Durée = {{ $value | printf \"%.0f\" }} s (SLA critique 600 s) sur {{ $labels.pipeline }}"
+
+  # ── Alertes Data Trust ─────────────────────────────────────────────────────
+  - name: alert_health
+    interval: 60s
+    rules:
+
+      # Plus de 10 alertes non acquittées → avertissement opérationnel
+      - alert: ManyUnacknowledgedAlerts
+        expr: data_trust_alerts_unacknowledged > 10
+        for:  5m
+        labels:
+          severity: warning
+          team:     data-ops
+        annotations:
+          summary:     "Trop d'alertes non acquittées"
+          description: "{{ $value }} alertes non traitées dans Data Trust Agent"
