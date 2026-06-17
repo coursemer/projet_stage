@@ -68,7 +68,7 @@ class AnomalyAlert:
     algorithm:    str                    # zscore | iqr | threshold | trend
     severity:     str                    # critical | warning | info
     value:        float
-    expected:     str                    # description de la plage normale
+    expected:     str = ""               # description de la plage normale
     ts:           str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     tags:         dict = field(default_factory=dict)
     details:      str = ""
