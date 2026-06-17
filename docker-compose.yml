@@ -118,10 +118,7 @@ services:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
       - '--web.listen-address=:9093'
-      - '--cluster.listen-address='    # mode single-instance (pas de HA)
-    environment:
-      SMTP_PASSWORD:    '${SMTP_PASSWORD:-changeme}'
-      TEAMS_WEBHOOK_URL: '${TEAMS_WEBHOOK_URL:-http://localhost:8090/api/v1/webhook}'
+      - '--cluster.listen-address='
     restart: unless-stopped
 
 volumes:

@@ -317,6 +317,47 @@ def create_app(db_path: str = DEFAULT_DB) -> "FastAPI":  # type: ignore[return]
         n = alert_mgr.acknowledge_all(source=source, severity=severity, metric_name=metric_name)
         return {"acknowledged": n}
 
+    @app.post("/api/v1/alerts/webhook")
+    async def alertmanager_webhook(request: "Request"):  # type: ignore[name-defined]
+        """
+        Receiver webhook pour Prometheus AlertManager.
+        AlertManager POST ici quand une alerte fire ou se résout.
+        Persiste les alertes reçues dans la table alerts SQLite.
+        """
+        try:
+            from fastapi import Request as _Request
+            payload = await request.json()
+        except Exception:
+            return {"received": 0}
+
+        alerts_received = payload.get("alerts", [])
+        saved = 0
+        for a in alerts_received:
+            labels      = a.get("labels", {})
+            annotations = a.get("annotations", {})
+            status      = a.get("status", "firing")
+            if status == "resolved":
+                continue
+            sev_map = {"critical": "critical", "warning": "warning", "info": "info"}
+            sev     = sev_map.get(labels.get("severity", "info"), "info")
+            from spark.metrics.anomaly_detector import AnomalyAlert
+            alert_obj = AnomalyAlert(
+                metric_name=labels.get("metric", labels.get("alertname", "unknown")),
+                source=labels.get("pipeline", labels.get("source", "alertmanager")),
+                algorithm="prometheus",
+                severity=sev,
+                value=0.0,
+                details=annotations.get("description", annotations.get("summary", "")),
+            )
+            alert_mgr.save([alert_obj])
+            saved += 1
+
+        return {
+            "received":  len(alerts_received),
+            "persisted": saved,
+            "ts":        datetime.now(timezone.utc).isoformat(),
+        }
+
     return app
 
 
