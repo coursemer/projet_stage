@@ -1,0 +1,5 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements-api.txt .
+RUN pip install -r requirements-api.txt --no-cache-dir --quiet
+CMD ["python", "spark/metrics/api.py", "--host", "0.0.0.0", "--port", "8090"]

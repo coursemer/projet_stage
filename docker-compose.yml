@@ -2,7 +2,10 @@ version: '3.8'
 
 services:
   metrics-api:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile.metrics-api
+    image: data-trust-metrics-api:latest
     working_dir: /app
     ports:
       - "8090:8090"
@@ -15,9 +18,6 @@ services:
       INFLUX_TOKEN: data-trust-token-2026
       INFLUX_ORG: data-trust
       INFLUX_BUCKET: metrics
-    command: >
-      bash -c "pip install -r requirements-api.txt --quiet &&
-               python spark/metrics/api.py --host 0.0.0.0 --port 8090"
 
   airflow:
     image: apache/airflow:latest

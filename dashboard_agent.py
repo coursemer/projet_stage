@@ -282,7 +282,7 @@ if page == "Vue d'ensemble":
     if os.path.exists(DBT_MANIFEST):
         graph    = LineageParser().from_dbt(DBT_MANIFEST)
         st.caption(f"{len(graph.nodes)} nœuds · {len(graph.edges)} arêtes")
-        selected = st.selectbox("Explorer un nœud", sorted(graph.node_names()))
+        selected = st.selectbox("Explorer un nœud", sorted(n.name for n in graph.nodes))
         c1, c2 = st.columns(2)
         c1.write("**Upstream**");   c1.write(graph.ancestors(selected)   or "_aucune_")
         c2.write("**Downstream**"); c2.write(graph.descendants(selected) or "_aucun_")
