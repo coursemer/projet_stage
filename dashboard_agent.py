@@ -28,7 +28,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from spark.anomaly_injector                             import AnomalyInjector, ANOMALY_CATALOG
+from spark.auth.graph_client                            import GraphClient
+from spark.auth.streamlit_login                         import require_login, logout
 from spark.catalog.catalog                              import DataCatalog
 from spark.catalog.lineage                              import LineageParser
 from spark.catalog.models                               import CatalogEntry, Incident
@@ -38,6 +46,9 @@ from spark.metrics.anomaly_detection.anomaly_detector   import AnomalyDetector
 from spark.metrics.anomaly_detection.models             import PipelineMetrics
 from spark.metrics.llm_explainer                        import LLMExplainer
 from spark.metrics.validation                           import TestGenerator
+
+# ── Connexion Microsoft (bloque tant que l'utilisateur n'est pas authentifié) ──
+ms_auth = require_login()
 
 # ── Chemins ───────────────────────────────────────────────────────────────────
 CATALOG_DB   = os.path.join(BASE_DIR, "spark", "data", "catalog.db")
@@ -219,6 +230,57 @@ st.set_page_config(
 with st.sidebar:
     st.title("🛡️ Data Trust Agent")
     st.caption("Phase 4 — Semaine 13")
+
+    # ── Compte Microsoft lié ──────────────────────────────────────────────────
+    st.markdown(f"👤 **{ms_auth.get('name') or ms_auth.get('email') or 'Utilisateur Microsoft'}**")
+    if ms_auth.get("email"):
+        st.caption(ms_auth["email"])
+    if st.button("🔓 Se déconnecter", use_container_width=True):
+        logout()
+
+    with st.expander("🔗 Lier un canal Teams (Graph)", expanded=False):
+        st.caption("Envoie des alertes dans Teams via votre propre compte Microsoft (Graph), sans webhook.")
+        graph = GraphClient(ms_auth["access_token"])
+        teams = st.session_state.get("_ms_teams")
+        if teams is None:
+            try:
+                teams = graph.list_joined_teams()
+            except Exception as e:
+                teams = []
+                st.error(f"Impossible de lister vos équipes Teams : {e}")
+            st.session_state["_ms_teams"] = teams
+
+        if teams:
+            team_labels = {t["displayName"]: t["id"] for t in teams}
+            team_name   = st.selectbox("Équipe", list(team_labels.keys()), key="graph_team_name")
+            team_id     = team_labels[team_name]
+            try:
+                channels = graph.list_channels(team_id)
+            except Exception as e:
+                channels = []
+                st.error(f"Impossible de lister les canaux : {e}")
+
+            if channels:
+                chan_labels = {c["displayName"]: c["id"] for c in channels}
+                chan_name   = st.selectbox("Canal", list(chan_labels.keys()), key="graph_channel_name")
+                st.session_state["graph_team_id"]    = team_id
+                st.session_state["graph_channel_id"] = chan_labels[chan_name]
+                st.session_state["graph_channel_enabled"] = st.toggle(
+                    "Envoyer les alertes critiques dans ce canal (en mon nom)",
+                    value=st.session_state.get("graph_channel_enabled", False),
+                )
+                if st.button("📨 Tester ce canal", use_container_width=True):
+                    res = graph.send_channel_message(
+                        team_id, st.session_state["graph_channel_id"],
+                        "<b>✅ Data Trust Agent</b> — test de connexion via votre compte Microsoft.",
+                    )
+                    if res.get("ok"):
+                        st.success("✅ Message de test envoyé")
+                    else:
+                        st.error(f"❌ {res.get('detail')}")
+        else:
+            st.caption("Aucune équipe Teams trouvée pour ce compte.")
+
     st.divider()
     page = st.radio(
         "Navigation",
@@ -550,6 +612,30 @@ elif page == "🧪 Injection":
                         st.info(f"🔔 **{sent} notification(s) envoyée(s) vers Teams**")
                 except Exception as e:
                     st.warning(f"Teams : {e}")
+
+            # Notification via Graph, au nom de l'utilisateur Microsoft connecté
+            if st.session_state.get("graph_channel_enabled") and st.session_state.get("graph_channel_id"):
+                try:
+                    graph_notifier = GraphClient(ms_auth["access_token"])
+                    critical = [a for a in anomalies
+                                if str(a.severity).upper() in ("CRITICAL", "HIGH")]
+                    sent = 0
+                    for a in critical:
+                        html = (
+                            f"<b>🔔 Alerte {a.severity}</b> — pipeline <b>{pipeline_sel}</b><br>"
+                            f"Métrique : {a.metric_name}<br>"
+                            f"Observé : {a.observed_value} (attendu : {a.expected_value})<br>"
+                            f"{a.description}"
+                        )
+                        res = graph_notifier.send_channel_message(
+                            st.session_state["graph_team_id"], st.session_state["graph_channel_id"], html,
+                        )
+                        if res.get("ok"):
+                            sent += 1
+                    if sent:
+                        st.info(f"🔗 **{sent} notification(s) envoyée(s) dans Teams via votre compte Microsoft**")
+                except Exception as e:
+                    st.warning(f"Teams (Graph) : {e}")
 
             for i, a in enumerate(anomalies):
                 sev_icon = SEV_COLOR.get(str(a.severity), "🔵")

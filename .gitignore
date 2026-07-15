@@ -3,6 +3,7 @@ airflow_env/
 venv/
 env/
 .venv/
+.env
 
 # Airflow
 logs/
