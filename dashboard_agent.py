@@ -226,6 +226,44 @@ with st.sidebar:
         index=0,
     )
     st.divider()
+
+    # ── Configuration Teams ───────────────────────────────────────────────────
+    with st.expander("🔔 Notifications Teams", expanded=False):
+        teams_url = st.text_input(
+            "Webhook URL",
+            value=st.session_state.get("teams_webhook_url",
+                  os.getenv("TEAMS_WEBHOOK_URL", "")),
+            placeholder="https://…webhook.office.com/…",
+            type="password",
+            help="Incoming Webhook du canal Teams cible",
+        )
+        if teams_url != st.session_state.get("teams_webhook_url", ""):
+            st.session_state["teams_webhook_url"] = teams_url
+
+        teams_enabled = st.toggle(
+            "Activer",
+            value=bool(st.session_state.get("teams_webhook_url")),
+            key="teams_enabled",
+        )
+
+        if st.button("📨 Envoyer un test", use_container_width=True,
+                     disabled=not teams_url):
+            try:
+                from spark.alerting.teams_notifier import TeamsNotifier
+                res = TeamsNotifier(webhook_url=teams_url).send_test()
+                if res.get("ok"):
+                    st.success("✅ Message de test envoyé")
+                else:
+                    st.error(f"❌ {res.get('detail')}")
+            except Exception as e:
+                st.error(str(e))
+
+        if teams_url:
+            st.caption("✅ Teams configuré")
+        else:
+            st.caption("⚠️ URL non configurée")
+
+    st.divider()
     st.caption(f"🕒 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     if st.button("🔄 Actualiser", use_container_width=True):
         st.cache_data.clear()
@@ -489,6 +527,30 @@ elif page == "🧪 Injection":
             icon  = SEV_COLOR.get(worst, "🔴")
             st.error(f"{icon} **{len(anomalies)} anomalie(s) détectée(s)** — pire sévérité : **{worst}**")
 
+            # Notification Teams automatique si configuré
+            teams_url = st.session_state.get("teams_webhook_url", os.getenv("TEAMS_WEBHOOK_URL", ""))
+            if teams_url and st.session_state.get("teams_enabled", False):
+                try:
+                    from spark.alerting.teams_notifier import TeamsNotifier
+                    notifier = TeamsNotifier(webhook_url=teams_url)
+                    critical = [a for a in anomalies
+                                if str(a.severity).upper() in ("CRITICAL", "HIGH")]
+                    sent = 0
+                    for a in critical:
+                        res = notifier.send_alert(
+                            pipeline=pipeline_sel,
+                            metric=a.metric_name,
+                            severity=str(a.severity).upper(),
+                            value=a.observed_value or 0.0,
+                            details=a.description,
+                        )
+                        if res.get("ok"):
+                            sent += 1
+                    if sent:
+                        st.info(f"🔔 **{sent} notification(s) envoyée(s) vers Teams**")
+                except Exception as e:
+                    st.warning(f"Teams : {e}")
+
             for i, a in enumerate(anomalies):
                 sev_icon = SEV_COLOR.get(str(a.severity), "🔵")
                 with st.expander(
@@ -540,11 +602,11 @@ elif page == "Règles":
     st.divider()
     col_f1, col_f2 = st.columns(2)
     pipeline_f = col_f1.selectbox("Pipeline", ["Tous"] + PIPELINES)
-    status_f   = col_f2.selectbox("Statut",   ["Tous", "pending", "approved", "rejected"])
+    status_f   = col_f2.selectbox("Statut",   ["pending", "approved", "rejected", "Tous"])
 
     filtered = rule_store.list_rules(
         pipeline_name=None if pipeline_f == "Tous" else pipeline_f,
-        status=None       if status_f   == "Tous" else status_f,
+        status=None        if status_f   == "Tous" else status_f,
     )
 
     if not filtered:
@@ -566,16 +628,13 @@ elif page == "Règles":
         st.divider()
         st.subheader("Action")
         rule_sel = st.selectbox("Règle", [r["rule_id"] for r in filtered])
-        col_a, col_r, col_rst = st.columns(3)
+        col_a, col_r = st.columns(2)
         if col_a.button("✅ Approuver", use_container_width=True):
             rule_store.approve(rule_sel)
-            st.success(f"Approuvée : **{rule_sel}**")
+            st.success(f"Règle approuvée : **{rule_sel}**")
             st.cache_data.clear(); st.rerun()
-        note = st.text_input("Note de rejet")
+        note = st.text_input("Note de rejet (optionnel)")
         if col_r.button("❌ Rejeter", use_container_width=True):
             rule_store.reject(rule_sel, note=note)
-            st.error(f"Rejetée : **{rule_sel}**")
-            st.cache_data.clear(); st.rerun()
-        if col_rst.button("🔄 Pending", use_container_width=True):
-            rule_store.reset(rule_sel)
+            st.error(f"Règle rejetée : **{rule_sel}**")
             st.cache_data.clear(); st.rerun()

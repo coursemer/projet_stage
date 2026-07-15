@@ -206,11 +206,30 @@ def create_app(db_path: str = DEFAULT_DB) -> "FastAPI":  # type: ignore[return]
         by_sev: dict = {}
         for a in alerts:
             by_sev[a.severity] = by_sev.get(a.severity, 0) + 1
+
+        # Notifications Teams pour les alertes critical/warning
+        teams_results: list = []
+        try:
+            from spark.alerting.teams_notifier import TeamsNotifier
+            notifier = TeamsNotifier()
+            if notifier.configured:
+                critical = [a for a in alerts if a.severity in ("critical", "warning")]
+                for a in critical:
+                    res = notifier.send_alert(
+                        pipeline=a.source, metric=a.metric_name,
+                        severity=a.severity.upper(), value=a.value,
+                        details=getattr(a, "details", ""),
+                    )
+                    teams_results.append({"metric": a.metric_name, **res})
+        except Exception:
+            pass
+
         return {
-            "detected": len(alerts),
-            "saved":    n_saved,
-            "by_severity": by_sev,
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "detected":     len(alerts),
+            "saved":        n_saved,
+            "by_severity":  by_sev,
+            "teams_sent":   len([r for r in teams_results if r.get("ok")]),
+            "ts":           datetime.now(timezone.utc).isoformat(),
         }
 
     @app.patch("/api/v1/alerts/{alert_id}/acknowledge")

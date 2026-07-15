@@ -51,6 +51,16 @@ Dashboard Streamlit
 http://localhost:8501
 ```
 
+Le schéma ci-dessus représente le flux de données complet du Data Trust Agent, organisé en deux branches parallèles qui convergent vers un point central.
+
+**Point d'entrée — les pipelines de données.** Trois systèmes produisent des données : Apache Airflow orchestre les workflows, Apache Spark transforme les volumes de données, et dbt matérialise les modèles analytiques. Toutes leurs métriques d'exécution (nombre de lignes, taux de rejet, durée, taux de nulls…) sont centralisées dans une base SQLite appelée `metrics.db`. C'est le cœur du système.
+
+**Branche gauche — détection et gestion des incidents.** L'`Anomaly Detector` lit les métriques et applique quatre algorithmes en parallèle : seuils fixes métier, z-score statistique, IQR (détection par quartiles), et analyse de tendance. Quand une anomalie est détectée, elle devient une alerte stockée par l'`Alert Manager`. La `NotificationService` achemine alors la notification vers les canaux configurés (console en démo, Teams ou Email en production). L'`IncidentManager` prend le relais pour gérer le cycle de vie de l'incident (ouvert → en investigation → résolu), y compris l'escalade automatique de sévérité. Le `RunbookEngine` suggère les étapes de remédiation adaptées parmi cinq runbooks pré-chargés. Enfin, le `DataCatalog` calcule un score qualité de 0 à 1 par pipeline, synthèse de tous les incidents survenus.
+
+**Branche droite — observabilité standard.** Le `Prometheus Exporter` traduit les métriques SQLite au format texte Prometheus et les expose sur l'endpoint `GET /metrics`. Prometheus scrape cet endpoint toutes les 15 secondes et évalue les règles d'alerte définies dans `prometheus_rules.yml`. Quand une règle se déclenche (ex. taux de rejet > 20%), AlertManager reçoit l'alerte, applique ses règles de routage et de silence, puis la renvoie vers l'API via `POST /api/v1/alerts/webhook`. Ce webhook persiste l'alerte dans SQLite, fermant la boucle avec la branche gauche.
+
+**Point de convergence — le Dashboard Streamlit.** Les deux branches alimentent le même `metrics.db`. Le Dashboard Streamlit lit cette base en temps réel et présente une vue unifiée : santé des pipelines, liste des anomalies avec explications LLM, graphiques temporels, interface d'injection de test, et workflow d'approbation des règles.
+
 ---
 
 ## Étapes de la démo et leurs résultats

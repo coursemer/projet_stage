@@ -197,17 +197,6 @@ step "8 / DEMO S15 — Intégration end-to-end (5 scénarios)"
 $PYTHON livrable_semaine15.py 2>&1
 
 # ─────────────────────────────────────────────────────────────────────
-step "9 / DASHBOARD HTML — génération"
-# ─────────────────────────────────────────────────────────────────────
-
-$PYTHON spark/metrics/dashboard.py \
-    --db spark/data/metrics.db \
-    --out spark/data/dashboard.html 2>&1 | grep -E "généré|erreur"
-
-open spark/data/dashboard.html 2>/dev/null || xdg-open spark/data/dashboard.html 2>/dev/null || true
-ok "Dashboard HTML ouvert : spark/data/dashboard.html"
-
-# ─────────────────────────────────────────────────────────────────────
 hr
 printf '\n'
 echo "  ╔══════════════════════════════════════════════════════════════╗"
