@@ -9,7 +9,7 @@ Pages :
   1. Vue d'ensemble  — santé des 3 pipelines
   2. Anomalies       — détail avec explications LLM + incidents
   3. Trends          — graphiques temporels + search sémantique
-  4. 🧪 Injection    — injection contrôlée + détection en temps réel
+  4. Injection    — injection contrôlée + détection en temps réel
   5. Règles          — approbation / rejet des tests générés
 """
 from __future__ import annotations
@@ -28,7 +28,16 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from spark.anomaly_injector                             import AnomalyInjector, ANOMALY_CATALOG
+from spark.auth.graph_client                            import GraphClient
+from spark.auth.streamlit_login                         import require_login, logout
+from spark.ui                                           import theme
 from spark.catalog.catalog                              import DataCatalog
 from spark.catalog.lineage                              import LineageParser
 from spark.catalog.models                               import CatalogEntry, Incident
@@ -38,6 +47,9 @@ from spark.metrics.anomaly_detection.anomaly_detector   import AnomalyDetector
 from spark.metrics.anomaly_detection.models             import PipelineMetrics
 from spark.metrics.llm_explainer                        import LLMExplainer
 from spark.metrics.validation                           import TestGenerator
+
+# ── Connexion Microsoft (bloque tant que l'utilisateur n'est pas authentifié) ──
+ms_auth = require_login()
 
 # ── Chemins ───────────────────────────────────────────────────────────────────
 CATALOG_DB   = os.path.join(BASE_DIR, "spark", "data", "catalog.db")
@@ -211,24 +223,75 @@ def load_raw_csv(path: str, nrows: int = 50_000) -> pd.DataFrame:
 
 st.set_page_config(
     page_title="Data Trust Agent",
-    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+theme.inject_app_theme()
 
 with st.sidebar:
-    st.title("🛡️ Data Trust Agent")
+    st.title("Data Trust Agent")
     st.caption("Phase 4 — Semaine 13")
+
+    # ── Compte Microsoft lié ──────────────────────────────────────────────────
+    st.markdown(f" **{ms_auth.get('name') or ms_auth.get('email') or 'Utilisateur Microsoft'}**")
+    if ms_auth.get("email"):
+        st.caption(ms_auth["email"])
+    if st.button("Se déconnecter", use_container_width=True):
+        logout()
+
+    with st.expander(" Lier un canal Teams (Graph)", expanded=False):
+        st.caption("Envoie des alertes dans Teams via votre propre compte Microsoft (Graph), sans webhook.")
+        graph = GraphClient(ms_auth["access_token"])
+        teams = st.session_state.get("_ms_teams")
+        if teams is None:
+            try:
+                teams = graph.list_joined_teams()
+            except Exception as e:
+                teams = []
+                st.error(f"Impossible de lister vos équipes Teams : {e}")
+            st.session_state["_ms_teams"] = teams
+
+        if teams:
+            team_labels = {t["displayName"]: t["id"] for t in teams}
+            team_name   = st.selectbox("Équipe", list(team_labels.keys()), key="graph_team_name")
+            team_id     = team_labels[team_name]
+            try:
+                channels = graph.list_channels(team_id)
+            except Exception as e:
+                channels = []
+                st.error(f"Impossible de lister les canaux : {e}")
+
+            if channels:
+                chan_labels = {c["displayName"]: c["id"] for c in channels}
+                chan_name   = st.selectbox("Canal", list(chan_labels.keys()), key="graph_channel_name")
+                st.session_state["graph_team_id"]    = team_id
+                st.session_state["graph_channel_id"] = chan_labels[chan_name]
+                st.session_state["graph_channel_enabled"] = st.toggle(
+                    "Envoyer les alertes critiques dans ce canal (en mon nom)",
+                    value=st.session_state.get("graph_channel_enabled", False),
+                )
+                if st.button(" Tester ce canal", use_container_width=True):
+                    res = graph.send_channel_message(
+                        team_id, st.session_state["graph_channel_id"],
+                        "<b> Data Trust Agent</b> — test de connexion via votre compte Microsoft.",
+                    )
+                    if res.get("ok"):
+                        st.success("☑ Message de test envoyé")
+                    else:
+                        st.error(f"☒ {res.get('detail')}")
+        else:
+            st.caption("Aucune équipe Teams trouvée pour ce compte.")
+
     st.divider()
     page = st.radio(
         "Navigation",
-        ["Vue d'ensemble", "Anomalies", "Trends", "🧪 Injection", "Règles"],
+        ["Vue d'ensemble", "Anomalies", "Trends", "Injection", "Règles"],
         index=0,
     )
     st.divider()
 
     # ── Configuration Teams ───────────────────────────────────────────────────
-    with st.expander("🔔 Notifications Teams", expanded=False):
+    with st.expander(" Notifications Teams", expanded=False):
         teams_url = st.text_input(
             "Webhook URL",
             value=st.session_state.get("teams_webhook_url",
@@ -240,32 +303,44 @@ with st.sidebar:
         if teams_url != st.session_state.get("teams_webhook_url", ""):
             st.session_state["teams_webhook_url"] = teams_url
 
+        teams_format = st.selectbox(
+            "Format du webhook",
+            options=["messagecard", "simple"],
+            format_func=lambda v: "Connecteur classique (MessageCard)" if v == "messagecard"
+                                   else "Power Automate personnalisé (JSON simple)",
+            index=0 if st.session_state.get("teams_webhook_format", "messagecard") == "messagecard" else 1,
+            help="Connecteur classique = Teams > canal > Connecteurs > Incoming Webhook.\n"
+                 "Power Automate = flux personnalisé avec déclencheur HTTP + action "
+                 "'Post message in a chat or channel'.",
+        )
+        st.session_state["teams_webhook_format"] = teams_format
+
         teams_enabled = st.toggle(
             "Activer",
             value=bool(st.session_state.get("teams_webhook_url")),
             key="teams_enabled",
         )
 
-        if st.button("📨 Envoyer un test", use_container_width=True,
+        if st.button(" Envoyer un test", use_container_width=True,
                      disabled=not teams_url):
             try:
                 from spark.alerting.teams_notifier import TeamsNotifier
-                res = TeamsNotifier(webhook_url=teams_url).send_test()
+                res = TeamsNotifier(webhook_url=teams_url, payload_format=teams_format).send_test()
                 if res.get("ok"):
-                    st.success("✅ Message de test envoyé")
+                    st.success("☑ Message de test envoyé")
                 else:
-                    st.error(f"❌ {res.get('detail')}")
+                    st.error(f"☒ {res.get('detail')}")
             except Exception as e:
                 st.error(str(e))
 
         if teams_url:
-            st.caption("✅ Teams configuré")
+            st.caption("☑ Teams configuré")
         else:
-            st.caption("⚠️ URL non configurée")
+            st.caption("☒ URL non configurée")
 
     st.divider()
-    st.caption(f"🕒 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    if st.button("🔄 Actualiser", use_container_width=True):
+    st.caption(f" {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    if st.button(" Actualiser", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -276,7 +351,13 @@ data = load_pipeline_data()
 # PAGE 1 — Vue d'ensemble
 # ══════════════════════════════════════════════════════════════════════════════
 if page == "Vue d'ensemble":
-    st.title("Vue d'ensemble — Santé des pipelines")
+    display_name = ms_auth.get("name") or ms_auth.get("email") or "utilisateur"
+    st.markdown(
+        f'<h1 style="margin-bottom:0">Bonjour {display_name}'
+        f'<span class="dt-badge">COMPTE MICROSOFT LIÉ</span></h1>',
+        unsafe_allow_html=True,
+    )
+    st.caption(f"{datetime.now().strftime('%A %d %B %Y')} · Vue d'ensemble — santé des pipelines")
 
     col1, col2, col3, col4 = st.columns(4)
     total_anomalies = sum(d["n_anomaly"] for d in data.values())
@@ -299,9 +380,9 @@ if page == "Vue d'ensemble":
             c2.metric("Durée (s)",     f"{d['current'].duration_seconds:.1f}s")
             c3.metric("Score qualité", f"{d['score']:.0%}")
             if d["anomalies"]:
-                st.warning(f"⚠️ {d['n_anomaly']} anomalie(s) — pire sévérité : **{d['severity']}**")
+                st.warning(f" {d['n_anomaly']} anomalie(s) — pire sévérité : **{d['severity']}**")
             else:
-                st.success("✅ Pipeline sain")
+                st.success(" Pipeline sain")
 
     st.divider()
     st.subheader("Catalog")
@@ -335,7 +416,7 @@ elif page == "Anomalies":
     d = data[pipeline_sel]
 
     if not d["anomalies"]:
-        st.success(f"✅ **{pipeline_sel}** — aucune anomalie.")
+        st.success(f" **{pipeline_sel}** — aucune anomalie.")
     else:
         st.error(f"🔴 **{pipeline_sel}** — {len(d['anomalies'])} anomalie(s) · pire sévérité : {d['severity']}")
         for i, a in enumerate(d["anomalies"]):
@@ -349,7 +430,7 @@ elif page == "Anomalies":
                 expl = a.context.get("llm_explanation", "")
                 back = a.context.get("llm_backend", "template")
                 if expl:
-                    st.info(f"💬 **Explication** _(via {back})_\n\n{expl}")
+                    st.info(f" **Explication** _(via {back})_\n\n{expl}")
 
     st.divider()
     st.subheader(f"Incidents — {pipeline_sel}")
@@ -358,7 +439,7 @@ elif page == "Anomalies":
         df_inc = pd.DataFrame([{
             "ID": i.id, "Sévérité": i.severity, "Type": i.anomaly_type,
             "Description": i.description[:80],
-            "Résolu": "✅" if i.resolved else "❌",
+            "Résolu": "☑" if i.resolved else "☒",
             "Date": i.created_at.strftime("%Y-%m-%d %H:%M"),
         } for i in incs])
         st.dataframe(df_inc, use_container_width=True, hide_index=True)
@@ -387,7 +468,7 @@ elif page == "Trends":
     values  = [getattr(h, metric_sel) for h in history]
 
     df_hist = pd.DataFrame({"date": pd.to_datetime(ts_list), metric_sel: values})
-    st.line_chart(df_hist.set_index("date"), use_container_width=True)
+    st.line_chart(df_hist.set_index("date"), color=[theme.ACCENT_B], use_container_width=True)
 
     mean_val  = sum(values) / len(values)
     std_val   = (sum((v - mean_val) ** 2 for v in values) / len(values)) ** 0.5
@@ -402,12 +483,12 @@ elif page == "Trends":
     c4.metric("Seuil ±3σ",          f"[{sigma3_lo:,.0f}, {sigma3_hi:,.0f}]")
 
     if cur_val > sigma3_hi or cur_val < sigma3_lo:
-        st.error(f"⚠️ Valeur actuelle hors des bornes ±3σ")
+        st.error(f" Valeur actuelle hors des bornes ±3σ")
     else:
-        st.success("✅ Valeur dans la plage normale (±3σ)")
+        st.success(" Valeur dans la plage normale (±3σ)")
 
     st.divider()
-    st.subheader("🔍 Recherche sémantique")
+    st.subheader(" Recherche sémantique")
     q = st.text_input("Requête", placeholder="ex: pipeline nettoyage ventes")
     if q:
         s = SemanticSearch(use_embeddings=False)
@@ -419,8 +500,8 @@ elif page == "Trends":
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 4 — Injection
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "🧪 Injection":
-    st.title("🧪 Injection contrôlée d'anomalies")
+elif page == "Injection":
+    st.title("Injection contrôlée d'anomalies")
     st.caption("Injecte des anomalies dans les données CSV réelles et observe la détection en temps réel.")
 
     # ── Paramètres ────────────────────────────────────────────────────────────
@@ -439,7 +520,7 @@ elif page == "🧪 Injection":
             if st.checkbox(atype, key=f"chk_{atype}", help=info["description"]):
                 selected_types.append(atype)
 
-        inject_btn = st.button("🚀 Lancer l'injection", type="primary", use_container_width=True,
+        inject_btn = st.button(" Lancer l'injection", type="primary", use_container_width=True,
                                disabled=len(selected_types) == 0)
 
     with col_right:
@@ -501,7 +582,7 @@ elif page == "🧪 Injection":
 
         # ── Détection sur les données injectées ───────────────────────────
         st.divider()
-        st.subheader("🔍 Détection d'anomalies sur les données injectées")
+        st.subheader(" Détection d'anomalies sur les données injectées")
 
         with st.spinner("Calcul des métriques et détection…"):
             current_metrics = _df_to_pipeline_metrics(
@@ -520,8 +601,8 @@ elif page == "🧪 Injection":
                 get_explainer().enrich_anomalies(anomalies)
 
         if not anomalies:
-            st.success("✅ Aucune anomalie détectée après injection.")
-            st.info("💡 Essayez un taux d'injection plus élevé ou plusieurs types combinés.")
+            st.success("Aucune anomalie détectée après injection.")
+            st.info(" Essayez un taux d'injection plus élevé ou plusieurs types combinés.")
         else:
             worst = det_result.worst_severity.value if det_result.worst_severity else "?"
             icon  = SEV_COLOR.get(worst, "🔴")
@@ -532,7 +613,10 @@ elif page == "🧪 Injection":
             if teams_url and st.session_state.get("teams_enabled", False):
                 try:
                     from spark.alerting.teams_notifier import TeamsNotifier
-                    notifier = TeamsNotifier(webhook_url=teams_url)
+                    notifier = TeamsNotifier(
+                        webhook_url=teams_url,
+                        payload_format=st.session_state.get("teams_webhook_format", "messagecard"),
+                    )
                     critical = [a for a in anomalies
                                 if str(a.severity).upper() in ("CRITICAL", "HIGH")]
                     sent = 0
@@ -547,9 +631,33 @@ elif page == "🧪 Injection":
                         if res.get("ok"):
                             sent += 1
                     if sent:
-                        st.info(f"🔔 **{sent} notification(s) envoyée(s) vers Teams**")
+                        st.info(f" **{sent} notification(s) envoyée(s) vers Teams**")
                 except Exception as e:
                     st.warning(f"Teams : {e}")
+
+            # Notification via Graph, au nom de l'utilisateur Microsoft connecté
+            if st.session_state.get("graph_channel_enabled") and st.session_state.get("graph_channel_id"):
+                try:
+                    graph_notifier = GraphClient(ms_auth["access_token"])
+                    critical = [a for a in anomalies
+                                if str(a.severity).upper() in ("CRITICAL", "HIGH")]
+                    sent = 0
+                    for a in critical:
+                        html = (
+                            f"<b> Alerte {a.severity}</b> — pipeline <b>{pipeline_sel}</b><br>"
+                            f"Métrique : {a.metric_name}<br>"
+                            f"Observé : {a.observed_value} (attendu : {a.expected_value})<br>"
+                            f"{a.description}"
+                        )
+                        res = graph_notifier.send_channel_message(
+                            st.session_state["graph_team_id"], st.session_state["graph_channel_id"], html,
+                        )
+                        if res.get("ok"):
+                            sent += 1
+                    if sent:
+                        st.info(f" **{sent} notification(s) envoyée(s) dans Teams via votre compte Microsoft**")
+                except Exception as e:
+                    st.warning(f"Teams (Graph) : {e}")
 
             for i, a in enumerate(anomalies):
                 sev_icon = SEV_COLOR.get(str(a.severity), "🔵")
@@ -565,7 +673,7 @@ elif page == "🧪 Injection":
                     expl = a.context.get("llm_explanation", "")
                     back = a.context.get("llm_backend", "template")
                     if expl:
-                        st.info(f"💬 **Explication** _(via {back})_\n\n{expl}")
+                        st.info(f" **Explication** _(via {back})_\n\n{expl}")
 
         # Résumé
         summary = det_result.summary()
@@ -582,7 +690,7 @@ elif page == "🧪 Injection":
             st.bar_chart(df_sum.set_index("Niveau"), use_container_width=True)
 
     elif not selected_types:
-        st.info("👆 Sélectionne au moins un type d'anomalie, puis clique sur **Lancer l'injection**.")
+        st.info(" Sélectionne au moins un type d'anomalie, puis clique sur **Lancer l'injection**.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -629,12 +737,12 @@ elif page == "Règles":
         st.subheader("Action")
         rule_sel = st.selectbox("Règle", [r["rule_id"] for r in filtered])
         col_a, col_r = st.columns(2)
-        if col_a.button("✅ Approuver", use_container_width=True):
+        if col_a.button("Approuver", use_container_width=True):
             rule_store.approve(rule_sel)
             st.success(f"Règle approuvée : **{rule_sel}**")
             st.cache_data.clear(); st.rerun()
         note = st.text_input("Note de rejet (optionnel)")
-        if col_r.button("❌ Rejeter", use_container_width=True):
+        if col_r.button("Rejeter", use_container_width=True):
             rule_store.reject(rule_sel, note=note)
             st.error(f"Règle rejetée : **{rule_sel}**")
             st.cache_data.clear(); st.rerun()

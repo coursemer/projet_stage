@@ -1,14 +1,22 @@
 """
-TeamsNotifier — envoi de notifications Microsoft Teams via Incoming Webhook.
+TeamsNotifier — envoi de notifications Microsoft Teams via webhook.
 
-Lit automatiquement TEAMS_WEBHOOK_URL depuis l'environnement.
-Peut aussi être instancié avec une URL explicite.
+Deux formats supportés (payload_format / TEAMS_WEBHOOK_FORMAT) :
+  "messagecard" (défaut) — connecteur "Incoming Webhook" classique
+      (Teams > canal > ... > Connecteurs). Microsoft retire progressivement
+      ce connecteur selon les tenants.
+  "simple"      — flux Power Automate personnalisé, déclencheur
+      "When an HTTP request is received" + action "Post message in a chat
+      or channel", avec un schéma de corps de requête {"title", "text"}.
+
+Lit automatiquement TEAMS_WEBHOOK_URL / TEAMS_WEBHOOK_FORMAT depuis
+l'environnement. Peut aussi être instancié avec des valeurs explicites.
 
 Usage :
     from spark.alerting.teams_notifier import TeamsNotifier
 
-    notifier = TeamsNotifier()                          # lit TEAMS_WEBHOOK_URL
-    notifier = TeamsNotifier(webhook_url="https://…")   # URL explicite
+    notifier = TeamsNotifier()                          # lit les variables d'env
+    notifier = TeamsNotifier(webhook_url="https://…", payload_format="simple")
 
     ok = notifier.send_alert(
         pipeline="clean_sales",
@@ -45,10 +53,12 @@ class TeamsNotifier:
     def __init__(
         self,
         webhook_url: Optional[str] = None,
+        payload_format: Optional[str] = None,
         dry_run: bool = False,
     ) -> None:
-        self.webhook_url = webhook_url or os.getenv("TEAMS_WEBHOOK_URL", "")
-        self.dry_run     = dry_run
+        self.webhook_url    = webhook_url or os.getenv("TEAMS_WEBHOOK_URL", "")
+        self.payload_format = (payload_format or os.getenv("TEAMS_WEBHOOK_FORMAT", "messagecard")).lower()
+        self.dry_run        = dry_run
 
     @property
     def configured(self) -> bool:
@@ -69,9 +79,23 @@ class TeamsNotifier:
         if not self.configured:
             return {"ok": False, "detail": "TEAMS_WEBHOOK_URL non configuré"}
 
-        color   = _SEV_COLOR.get(severity.upper(), "E74856")
-        ts      = ts or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        ts = ts or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
+        if self.payload_format == "simple":
+            payload = {
+                "title": f"Alerte {severity} — {pipeline}",
+                "text": (
+                    f"Pipeline : {pipeline}\n"
+                    f"Métrique : {metric}\n"
+                    f"Valeur : {value}\n"
+                    f"Sévérité : {severity}\n"
+                    f"Détail : {details or '—'}\n"
+                    f"Timestamp : {ts}"
+                ),
+            }
+            return self._post(payload)
+
+        color = _SEV_COLOR.get(severity.upper(), "E74856")
         payload = {
             "@type":      "MessageCard",
             "@context":   "https://schema.org/extensions",
@@ -117,6 +141,15 @@ class TeamsNotifier:
         if not self.configured:
             return {"ok": False, "detail": "TEAMS_WEBHOOK_URL non configuré"}
 
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+        if self.payload_format == "simple":
+            payload = {
+                "title": "Test Data Trust Agent",
+                "text": f"Connexion Teams opérationnelle.\nTimestamp : {ts}",
+            }
+            return self._post(payload)
+
         payload = {
             "@type":      "MessageCard",
             "@context":   "https://schema.org/extensions",
@@ -127,7 +160,7 @@ class TeamsNotifier:
                 "activitySubtitle": "Data Trust Agent — test de notification",
                 "facts": [
                     {"name": "Statut",    "value": "OK"},
-                    {"name": "Timestamp", "value": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")},
+                    {"name": "Timestamp", "value": ts},
                     {"name": "Dashboard", "value": "http://localhost:8501"},
                 ],
                 "markdown": True,
@@ -153,8 +186,6 @@ class TeamsNotifier:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 status = resp.status
                 body_r = resp.read().decode(errors="replace")
-            if status == 200 and body_r.strip() == "1":
-                return {"ok": True, "detail": f"HTTP {status}"}
-            return {"ok": True, "detail": f"HTTP {status} — {body_r[:80]}"}
+            return {"ok": True, "detail": f"HTTP {status} — {body_r[:80]}" if body_r.strip() else f"HTTP {status}"}
         except Exception as exc:
             return {"ok": False, "detail": str(exc)}
