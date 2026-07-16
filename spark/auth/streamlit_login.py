@@ -24,6 +24,7 @@ from typing import Any, Dict, Optional
 import streamlit as st
 
 from . import msal_auth
+from ..ui import theme
 
 SESSION_KEY = "ms_auth"
 
@@ -76,14 +77,13 @@ def _refresh_if_needed() -> None:
             st.session_state.pop(SESSION_KEY, None)
 
 
-def _render_login_page() -> None:
+def _render_login_page(error: Optional[str] = None) -> None:
     st.set_page_config(page_title="Data Trust Agent — Connexion", page_icon="🛡️", layout="centered")
-    st.title("🛡️ Data Trust Agent")
-    st.subheader("Connexion requise")
-    st.write(
-        "Connectez-vous avec votre compte Microsoft pour accéder au dashboard "
-        "et lier votre compte (envoi d'e-mails / messages Teams en votre nom)."
-    )
+    theme.inject_login_theme()
+
+    if error:
+        st.error(error)
+
     state = _new_state()
     try:
         auth_url = msal_auth.get_auth_url(state)
@@ -93,7 +93,21 @@ def _render_login_page() -> None:
             "Voir .env.example."
         )
         st.stop()
-    st.link_button("🔑 Se connecter avec Microsoft", auth_url, type="primary")
+
+    st.markdown(
+        """
+        <div class="dt-login-wrap">
+          <div class="dt-orb dt-orb-a"></div>
+          <div class="dt-orb dt-orb-b"></div>
+          <div class="dt-login-card">
+            <h1>Data Trust Agent</h1>
+            <p>Connectez-vous avec votre compte Microsoft pour accéder au dashboard
+            et lier votre compte (envoi d'e-mails / messages Teams en votre nom).</p>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.link_button("Se connecter avec Microsoft", auth_url, type="primary", use_container_width=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 
 def require_login() -> Dict[str, Any]:
@@ -114,9 +128,8 @@ def require_login() -> Dict[str, Any]:
 
     if "code" in params:
         if not _consume_state(params.get("state")):
-            st.set_page_config(page_title="Data Trust Agent — Connexion", page_icon="🛡️")
-            st.error("Lien de connexion expiré ou déjà utilisé, veuillez réessayer.")
             st.query_params.clear()
+            _render_login_page(error="Lien de connexion expiré ou déjà utilisé, veuillez réessayer.")
             st.stop()
         try:
             result = msal_auth.acquire_token_by_code(params["code"])
@@ -131,10 +144,10 @@ def require_login() -> Dict[str, Any]:
 
     if not _token_valid(auth):
         st.session_state.pop(SESSION_KEY, None)
+        error = None
         if st.session_state.get("auth_error"):
-            st.set_page_config(page_title="Data Trust Agent — Connexion", page_icon="🛡️", layout="centered")
-            st.error(f"Échec de connexion Microsoft : {st.session_state.pop('auth_error')}")
-        _render_login_page()
+            error = f"Échec de connexion Microsoft : {st.session_state.pop('auth_error')}"
+        _render_login_page(error=error)
         st.stop()
 
     return auth

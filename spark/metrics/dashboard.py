@@ -65,7 +65,7 @@ header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
          border-bottom: 1px solid #334155; padding: 20px 32px;
          display: flex; justify-content: space-between; align-items: center; }
 header h1 { font-size: 1.3rem; font-weight: 700; color: #f1f5f9; }
-header h1 span { color: #38bdf8; }
+header h1 span { color: #cbd5e1; }
 .gen-ts { font-size: .8rem; color: #64748b; }
 
 main { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
@@ -75,11 +75,11 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
 .kpi { background: #1e293b; border-radius: 12px; padding: 18px 20px;
        border: 1px solid #334155; position: relative; overflow: hidden; }
 .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0;
-               height: 3px; background: var(--accent, #38bdf8); }
+               height: 3px; background: var(--accent, #64748b); }
 .kpi.green { --accent: #22c55e; }
 .kpi.red   { --accent: #ef4444; }
 .kpi.amber { --accent: #f59e0b; }
-.kpi.blue  { --accent: #38bdf8; }
+.kpi.blue  { --accent: #64748b; }
 .kpi .num  { font-size: 2.2rem; font-weight: 800; line-height: 1; color: #f1f5f9; }
 .kpi .lbl  { font-size: .72rem; color: #64748b; text-transform: uppercase;
              letter-spacing: .6px; margin-top: 6px; }
@@ -120,7 +120,7 @@ tr:hover td { background: #0f172a; }
 
 .tag { display: inline-block; padding: 2px 8px; border-radius: 20px;
        font-size: .72rem; font-weight: 600; }
-.tag-dbt     { background: #1e3a5f; color: #60a5fa; }
+.tag-dbt     { background: #334155; color: #cbd5e1; }
 .tag-spark   { background: #3b1f0a; color: #fb923c; }
 .tag-airflow { background: #1a2e1a; color: #4ade80; }
 .tag-other   { background: #2d1f3d; color: #c084fc; }
@@ -129,7 +129,7 @@ tr:hover td { background: #0f172a; }
        font-size: .72rem; font-weight: 700; }
 .sev.critical { background: #e74c3c; color: #fff; }
 .sev.warning  { background: #431407; color: #fb923c; }
-.sev.info     { background: #0c1a3b; color: #60a5fa; }
+.sev.info     { background: #334155; color: #cbd5e1; }
 
 .empty { color: #475569; font-style: italic; text-align: center;
          padding: 28px; font-size: .9rem; }
@@ -142,7 +142,7 @@ tr:hover td { background: #0f172a; }
 .pipeline-card.ok       { --pc: #22c55e; }
 .pipeline-card.critical { --pc: #e74c3c; }
 .pipeline-card.warning  { --pc: #f59e0b; }
-.pipeline-card.info     { --pc: #38bdf8; }
+.pipeline-card.info     { --pc: #64748b; }
 .pipeline-name { font-weight: 700; font-size: .9rem; color: #e2e8f0; margin-bottom: 8px; }
 .pipeline-stat { font-size: .78rem; color: #64748b; margin-top: 3px; }
 .pipeline-stat span { color: #94a3b8; }
@@ -227,11 +227,11 @@ def _metrics_table(summary: list[dict]) -> str:
 
 def _alerts_table(alerts: list[dict]) -> str:
     if not alerts:
-        return '<p class="empty">✅ Aucune alerte récente.</p>'
+        return '<p class="empty">Aucune alerte récente.</p>'
     rows = []
     for a in alerts:
         ts      = str(a.get("ts", ""))[:19].replace("T", " ")
-        ack     = "✅" if a.get("acknowledged") else "⏳"
+        ack     = "Traité" if a.get("acknowledged") else "En attente"
         details = escape(str(a.get("details", ""))[:90])
         val     = f"{a.get('value', 0):.4g}"
         rows.append(
@@ -278,13 +278,13 @@ def _ml_pipeline_cards(snapshots: dict, ml_alerts: list[dict]) -> str:
 
         rc  = f"{current.row_count:,}" if current.row_count is not None else "—"
         dur = f"{current.duration_seconds:.1f}s" if current.duration_seconds is not None else "—"
-        ok  = ("✅ OK" if current.success else "❌ Échec") if current.success is not None else "—"
+        ok  = ("OK" if current.success else "Échec") if current.success is not None else "—"
         hist_days = len(history)
 
         alert_badge = (
             f'<span class="sev {worst}">{n_alerts} alerte{"s" if n_alerts > 1 else ""}</span>'
             if n_alerts else
-            '<span style="color:#4ade80;font-size:.75rem">✅ Sain</span>'
+            '<span style="color:#4ade80;font-size:.75rem">Sain</span>'
         )
 
         llm_block = ""
@@ -304,7 +304,7 @@ def _ml_pipeline_cards(snapshots: dict, ml_alerts: list[dict]) -> str:
                     bk_label = f' <span style="font-size:.7rem;color:#94a3b8">[{escape(bk)}]</span>' if bk else ""
                     llm_block += (
                         f'<div class="llm-explanation">'
-                        f'💬{bk_label} {escape(expl[:250])}'
+                        f'{bk_label} {escape(expl[:250])}'
                         f'</div>'
                     )
 
@@ -394,7 +394,7 @@ def generate(db_path: str = DEFAULT_DB, out_path: str = DEFAULT_OUT) -> str:
 
 <!-- dbt section -->
 <div class="section">
-  <h2>🔷 dbt Pipeline — statut des modèles</h2>
+  <h2>dbt Pipeline — statut des modèles</h2>
   <div class="model-grid">
     {_model_cards(dbt_models)}
   </div>
@@ -407,19 +407,19 @@ def generate(db_path: str = DEFAULT_DB, out_path: str = DEFAULT_OUT) -> str:
 
 <!-- All metrics table -->
 <div class="section">
-  <h2>📊 Métriques — dernière valeur par série</h2>
+  <h2>Métriques — dernière valeur par série</h2>
   {_metrics_table(summary)}
 </div>
 
 <!-- ML Pipelines -->
 <div class="section">
-  <h2>🤖 Pipelines — Analyse ML (Semaine 10)</h2>
+  <h2>Pipelines — Analyse ML (Semaine 10)</h2>
   {_ml_pipeline_cards(pipeline_snapshots, ml_alerts)}
 </div>
 
 <!-- Alerts -->
 <div class="section">
-  <h2>🚨 Alertes récentes (50 dernières)</h2>
+  <h2>Alertes récentes (50 dernières)</h2>
   {_alerts_table(alerts)}
 </div>
 
