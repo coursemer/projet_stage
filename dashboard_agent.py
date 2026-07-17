@@ -261,7 +261,6 @@ theme.inject_app_theme()
 
 with st.sidebar:
     st.title("Data Trust Agent")
-    st.caption("Phase 4 — Semaine 13")
 
     # ── Compte Microsoft lié ──────────────────────────────────────────────────
     st.markdown(f" **{ms_auth.get('name') or ms_auth.get('email') or 'Utilisateur Microsoft'}**")
