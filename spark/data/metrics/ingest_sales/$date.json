@@ -1,0 +1,8 @@
+{
+  "run_date": "$date",
+  "job": "ingest_sales",
+  "status": "error",
+  "duration_seconds": 0.813,
+  "ts": "2026-05-12T23:52:30.260944+00:00",
+  "end_ts": "2026-05-12T23:52:30.260944+00:00"
+}

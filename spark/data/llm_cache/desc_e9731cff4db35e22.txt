@@ -1,0 +1,1 @@
+Pipeline Spark agrégeant les données de ventes par période et par catégorie pour analyse.

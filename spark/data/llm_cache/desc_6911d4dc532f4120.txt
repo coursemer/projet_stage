@@ -1,0 +1,1 @@
+Pipeline Spark qui extrait et charge les données de ventes brutes dans le data warehouse.

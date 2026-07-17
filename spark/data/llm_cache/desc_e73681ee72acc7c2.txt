@@ -1,0 +1,1 @@
+Nettoie et structure les données brutes des ventes pour les rendre exploitables dans les analyses commerciales.
