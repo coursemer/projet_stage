@@ -1,0 +1,2 @@
+-- Proposé par Codestral (cible : duplicates) — À REVOIR avant de copier dans dbt/tests/ (ne s'exécute pas automatiquement)
+SELECT order_id, customer_id, product_id, sale_date, COUNT(*) as duplicate_count FROM {{ ref('stg_sales') }} GROUP BY order_id, customer_id, product_id, sale_date HAVING COUNT(*) > 1

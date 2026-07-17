@@ -1,0 +1,45 @@
+# Proposé par Codestral — À REVOIR avant de copier dans dbt/models/*.yml (ne s'exécute pas automatiquement)
+models:
+  - name: stg_sales
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        tests:
+          - not_null
+      - name: product_id
+        tests:
+          - not_null
+      - name: sale_date
+        tests:
+          - not_null
+      - name: quantity
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: unit_price
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0.01
+      - name: revenue
+        tests:
+          - not_null
+      - name: channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ONLINE', 'STORE', 'MOBILE']
+      - name: region
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['NORTH', 'SOUTH', 'EAST', 'WEST']
+      - name: currency
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['EUR']

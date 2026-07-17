@@ -31,6 +31,10 @@ class GeneratedRule:
     # Poids de feedback cumulé (ajusté par FeedbackLoop)
     fp_count: int = 0
     fn_count: int = 0
+    # Provenance : "statistical" (TestGenerator, mean ± k·σ) ou "llm" (Mistral,
+    # déduit des logs Airflow/dbt + de l'historique des métriques)
+    source: str = "statistical"
+    reasoning: str = ""              # justification en langage naturel (rules LLM)
 
     def evaluate(self, value: Optional[float]) -> bool:
         """True = règle respectée (pas d'anomalie). False = anomalie détectée."""
@@ -57,6 +61,8 @@ class GeneratedRule:
             "fp_count": self.fp_count,
             "fn_count": self.fn_count,
             "generated_at": self.generated_at.isoformat(),
+            "source": self.source,
+            "reasoning": self.reasoning,
         }
 
     @classmethod

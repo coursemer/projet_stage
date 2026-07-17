@@ -1,0 +1,24 @@
+# Proposé par Codestral — À REVOIR avant de copier dans dbt/models/*.yml (ne s'exécute pas automatiquement)
+models:
+  - name: stg_events
+    description: Staging model for events with data cleaning
+    columns:
+      - name: id
+        description: Event ID
+        tests:
+          - not_null
+          - unique
+      - name: timestamp
+        description: Event timestamp
+        tests:
+          - not_null
+      - name: user_id
+        description: User ID
+        tests:
+          - not_null
+      - name: event_type
+        description: Type of event
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['login', 'logout', 'purchase', 'view', 'add_to_cart']

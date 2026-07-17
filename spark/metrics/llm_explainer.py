@@ -159,6 +159,16 @@ class LLMExplainer:
         )
         return self._explain(anomaly)
 
+    def _active_backend(self) -> str:
+        """Nom du backend qui serait utilisé pour le prochain appel (mistral/ollama/template)."""
+        if self.api_key:
+            return f"mistral:{self.model}"
+        try:
+            with urllib.request.urlopen(f"{self.ollama_url}/api/tags", timeout=2):
+                return f"ollama:{self.ollama_model}"
+        except Exception:
+            return "template"
+
     # ── Internal dispatch ─────────────────────────────────────────────────────
 
     def _explain(self, anomaly: Anomaly) -> tuple[str, str]:
@@ -203,7 +213,10 @@ class LLMExplainer:
 
     def _get_client(self):
         if self._client is None:
-            from mistralai import Mistral
+            try:
+                from mistralai import Mistral
+            except ImportError:
+                from mistralai.client import Mistral  # mistralai>=2.x
             self._client = Mistral(api_key=self.api_key)
         return self._client
 

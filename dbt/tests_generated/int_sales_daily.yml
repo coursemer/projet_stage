@@ -1,0 +1,33 @@
+# Proposé par Codestral — À REVOIR avant de copier dans dbt/models/*.yml (ne s'exécute pas automatiquement)
+models:
+  - name: int_sales_daily
+    description: Daily aggregation of sales by region and channel
+    columns:
+      - name: sale_date
+        tests: [not_null]
+      - name: total_revenue
+        tests: [not_null]
+      - name: channel
+        tests:
+          - accepted_values:
+              values: ['ONLINE','STORE','MOBILE']
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['NORTH','SOUTH','EAST','WEST']
+      - name: nb_orders
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: nb_customers
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: total_units
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: avg_order_value
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0

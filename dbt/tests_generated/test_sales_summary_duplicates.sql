@@ -1,0 +1,2 @@
+-- Proposé par Codestral (cible : duplicates) — À REVOIR avant de copier dans dbt/tests/ (ne s'exécute pas automatiquement)
+SELECT sale_date, region, channel, COUNT(*) as count FROM {{ ref('sales_summary') }} GROUP BY sale_date, region, channel HAVING COUNT(*) > 1

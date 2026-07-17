@@ -1,0 +1,2 @@
+-- Proposé par Codestral (cible : future_date) — À REVOIR avant de copier dans dbt/tests/ (ne s'exécute pas automatiquement)
+SELECT sale_date FROM {{ ref('int_sales_daily') }} WHERE sale_date > CURRENT_DATE

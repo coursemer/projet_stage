@@ -43,10 +43,11 @@ from spark.catalog.lineage                              import LineageParser
 from spark.catalog.models                               import CatalogEntry, Incident
 from spark.catalog.rule_store                           import RuleStore
 from spark.catalog.search                               import SemanticSearch
+from spark.catalog.llm_describer                        import CatalogDescriber
 from spark.metrics.anomaly_detection.anomaly_detector   import AnomalyDetector
 from spark.metrics.anomaly_detection.models             import PipelineMetrics
 from spark.metrics.llm_explainer                        import LLMExplainer
-from spark.metrics.validation                           import TestGenerator
+from spark.metrics.validation                           import TestGenerator, LLMRuleGenerator
 
 # ── Connexion Microsoft (bloque tant que l'utilisateur n'est pas authentifié) ──
 ms_auth = require_login()
@@ -72,13 +73,21 @@ PIPELINE_CSV = {
 # Helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _pipeline_desc(name: str) -> str:
-    descs = {
-        "ingest_sales":    "Ingestion quotidienne des ventes brutes depuis la source.",
-        "clean_sales":     "Nettoyage et validation des ventes avec Pandera + Spark.",
-        "aggregate_sales": "Agrégation journalière des métriques de ventes par région.",
-    }
-    return descs.get(name, f"Pipeline {name}.")
+def _pipeline_desc(name: str, current: Optional["PipelineMetrics"] = None) -> str:
+    """Description du catalogue générée par le LLM (Mistral Small → Ollama → générique)."""
+    schema = current.schema_snapshot if current else None
+    stats = None
+    if current:
+        stats = {
+            k: v for k, v in {
+                "row_count": current.row_count,
+                "duration_seconds": current.duration_seconds,
+            }.items() if v is not None
+        }
+    return get_describer().describe(
+        name=name, entry_type="pipeline", tags=["spark", "sales"],
+        schema_snapshot=schema, stats=stats,
+    )
 
 
 def _df_to_pipeline_metrics(
@@ -148,6 +157,11 @@ def get_explainer():
     return LLMExplainer()
 
 
+@st.cache_resource
+def get_describer():
+    return CatalogDescriber()
+
+
 @st.cache_data(ttl=60)
 def load_pipeline_data():
     catalog = get_catalog()
@@ -179,7 +193,7 @@ def load_pipeline_data():
         score = max(0.0, round(1.0 - len(anomalies) * 0.08, 2))
         catalog.publish(CatalogEntry(
             name=pipeline, type="pipeline",
-            description=_pipeline_desc(pipeline),
+            description=_pipeline_desc(pipeline, current),
             owner="data-team", tags=["spark", "sales"],
             quality_score=score,
         ))
@@ -203,12 +217,29 @@ def load_pipeline_data():
 
 @st.cache_data(ttl=120)
 def load_rules():
-    store = get_rule_store()
-    rng   = random.Random(42)
+    store    = get_rule_store()
+    llm_gen  = LLMRuleGenerator()
+    rng      = random.Random(42)
     for pipeline in PIPELINES:
         history = _build_history(pipeline, 50_000)
-        rules   = TestGenerator(sigma_factor=3.0).generate(history)
+
+        # Règles statistiques (TestGenerator) — déduites automatiquement,
+        # soumises à l'ingénieur en statut "pending"
+        rules = TestGenerator(sigma_factor=3.0).generate(history)
         store.save_rules(rules, overwrite=False)
+
+        # Règles techniques + fonctionnelles déduites par Mistral (logs Airflow/dbt
+        # + comportement du pipeline) — même déduction automatique, même soumission
+        # à l'approbation de l'ingénieur. Silencieux si MISTRAL_API_KEY absente.
+        if llm_gen.configured:
+            llm_rules = llm_gen.generate(
+                history,
+                dbt_target_dir="dbt/target",
+                dbt_log_path="dbt/logs/dbt.log",
+                airflow_log_dir="logs",
+            )
+            store.save_rules(llm_rules, overwrite=False)
+
     return store.list_rules()
 
 
@@ -707,6 +738,9 @@ elif page == "Règles":
     c2.metric("Approuvées", summary.get("approved", 0))
     c3.metric("Rejetées",   summary.get("rejected", 0))
 
+    if not LLMRuleGenerator().configured:
+        st.caption("⚠️ MISTRAL_API_KEY non configurée — seules les règles statistiques sont déduites.")
+
     st.divider()
     col_f1, col_f2 = st.columns(2)
     pipeline_f = col_f1.selectbox("Pipeline", ["Tous"] + PIPELINES)
@@ -730,12 +764,16 @@ elif page == "Règles":
             "Confiance":   f"{r['confidence']:.0%}",
             "Statut":      r["status"],
             "FP":          r["fp_count"],
+            "Source":      r.get("source", "statistical"),
         } for r in filtered])
         st.dataframe(df_r, use_container_width=True, hide_index=True)
 
         st.divider()
         st.subheader("Action")
         rule_sel = st.selectbox("Règle", [r["rule_id"] for r in filtered])
+        selected = next((r for r in filtered if r["rule_id"] == rule_sel), None)
+        if selected and selected.get("reasoning"):
+            st.caption(f"💬 Raisonnement Mistral : {selected['reasoning']}")
         col_a, col_r = st.columns(2)
         if col_a.button("Approuver", use_container_width=True):
             rule_store.approve(rule_sel)

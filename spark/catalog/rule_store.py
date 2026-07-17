@@ -51,9 +51,16 @@ CREATE TABLE IF NOT EXISTS generated_rules (
     status         TEXT NOT NULL DEFAULT 'pending',
     status_note    TEXT DEFAULT '',
     generated_at   TEXT NOT NULL,
-    reviewed_at    TEXT
+    reviewed_at    TEXT,
+    source         TEXT DEFAULT 'statistical',
+    reasoning      TEXT DEFAULT ''
 );
 """
+
+_MIGRATIONS = (
+    ("source",    "ALTER TABLE generated_rules ADD COLUMN source TEXT DEFAULT 'statistical'"),
+    ("reasoning", "ALTER TABLE generated_rules ADD COLUMN reasoning TEXT DEFAULT ''"),
+)
 
 
 class RuleStore:
@@ -135,6 +142,11 @@ class RuleStore:
         with self._connect() as conn:
             conn.executescript(_DDL)
             conn.commit()
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(generated_rules)")}
+            for col, stmt in _MIGRATIONS:
+                if col not in existing:
+                    conn.execute(stmt)
+            conn.commit()
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
@@ -146,14 +158,16 @@ class RuleStore:
                 f"""INSERT OR {conflict} INTO generated_rules
                     (rule_id, pipeline_name, metric_name, sigma_factor,
                      threshold_low, threshold_high, mean, std, n_samples,
-                     confidence, fp_count, fn_count, status, generated_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'pending',?)""",
+                     confidence, fp_count, fn_count, status, generated_at,
+                     source, reasoning)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?)""",
                 (
                     rule.rule_id, rule.pipeline_name, rule.metric_name,
                     rule.sigma_factor, rule.threshold_low, rule.threshold_high,
                     rule.mean, rule.std, rule.n_samples, rule.confidence,
                     rule.fp_count, rule.fn_count,
                     rule.generated_at.isoformat(),
+                    rule.source, rule.reasoning,
                 ),
             )
             conn.commit()
@@ -183,7 +197,7 @@ _COLS = [
     "rule_id", "pipeline_name", "metric_name", "sigma_factor",
     "threshold_low", "threshold_high", "mean", "std", "n_samples",
     "confidence", "fp_count", "fn_count", "status", "status_note",
-    "generated_at", "reviewed_at",
+    "generated_at", "reviewed_at", "source", "reasoning",
 ]
 
 
@@ -207,4 +221,6 @@ def _row_to_rule(row) -> GeneratedRule:
         fp_count=d["fp_count"] or 0,
         fn_count=d["fn_count"] or 0,
         generated_at=datetime.fromisoformat(d["generated_at"]),
+        source=d.get("source") or "statistical",
+        reasoning=d.get("reasoning") or "",
     )

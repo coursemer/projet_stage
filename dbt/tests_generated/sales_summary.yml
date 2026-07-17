@@ -1,0 +1,25 @@
+# Proposé par Codestral — À REVOIR avant de copier dans dbt/models/*.yml (ne s'exécute pas automatiquement)
+models:
+  - name: sales_summary
+    description: Final sales mart with running totals and KPIs
+    columns:
+      - name: sale_date
+        tests: [not_null]
+      - name: region
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['NORTH', 'SOUTH', 'EAST', 'WEST']
+      - name: channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ONLINE', 'STORE', 'MOBILE']
+      - name: cumulative_revenue_by_region
+        tests: [not_null]
+      - name: revenue_pct_of_day
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
